@@ -1,0 +1,5 @@
+[
+  {"knownWords":["apple","book","cat","dog","fish","good","happy","jump","king","love","milk","name","sun","tree","water"],"unknownWords":["philosophy","ambiguous","synthesis","hypothesis","empirical"],"standardEstimate":4500},
+  {"knownWords":["student","teacher","school","important","science","government","population","company","scientist","technology"],"unknownWords":["phenomenon","comprehensive","philosophical","constitutional","epidemiological"],"standardEstimate":6500},
+  {"knownWords":["abandon","abstract","accelerate","accompany","accomplish","accurate","acknowledge","acquire","adapt","adjust"],"unknownWords":["epistemological","phenomenological","juxtaposition","jurisprudence","pharmacological"],"standardEstimate":8500}
+]

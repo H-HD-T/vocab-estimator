@@ -1,0 +1,41 @@
+﻿node_modules/
+target/
+*.log
+.vscode/
+.idea/
+*.iml
+.DS_Store
+*.pyc
+__pycache__/
+.env
+*.local
+/dist/
+node/
+# Temp/scratch files
+fix_*.py
+fix_*.js
+debug_*.js
+new_*.txt
+replace_*.py
+scrape_*.png
+step*.png
+test*.html
+test_node.js
+test_ps.txt
+val_test.json
+vue_data.txt
+file
+file_b64.txt
+fix_bom.py
+package-lock.json
+package.json
+
+# Build output
+dist/
+# Temp files
+file')
+*.png
+*.txt
+
+# SSH keys
+id_ed25519*
