@@ -5,105 +5,146 @@ const path = require('path');
   const resultPath = path.join(process.cwd(), 'vocab_single.json');
   console.log('[scrape] Launching...');
   const browser = await chromium.launch({ headless: false, args: ['--no-sandbox'] });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+  const page = await browser.newPage();
   page.setDefaultTimeout(20000);
   try {
     await page.goto('https://preply.com/en/learn/english/test-your-vocab', { timeout: 30000, waitUntil: 'load' });
     await page.waitForTimeout(5000);
     console.log('[scrape] URL:', page.url());
+    console.log('[scrape] Title:', await page.title());
 
-    // Do everything in browser context - more reliable
-    const result = await page.evaluate(() => {
-      const log = [];
-      let allWords = [];
-      let allKnown = [];
+    // Debug: take screenshot
+    await page.screenshot({ path: path.join(process.cwd(), 'scrape_debug.png') });
+    console.log('[scrape] Screenshot saved');
+
+    // Find all checkboxes using Playwright locator
+    let cbs = page.locator('input[type=checkbox]');
+    let total = await cbs.count();
+    console.log('[scrape] Found', total, 'checkboxes');
+
+    if (total > 0) {
+      // Try clicking ALL checkboxes (no probability filtering for debugging)
+      let clicked = 0;
+      for (let i = 0; i < total; i++) {
+        try {
+          await cbs.nth(i).click({ force: true });
+          clicked++;
+        } catch(e) {
+          console.log('[scrape] Click failed for checkbox', i, ':', e.message.substring(0, 50));
+        }
+      }
+      console.log('[scrape] Clicked', clicked, 'of', total, 'checkboxes');
       
-      for (let pg = 0; pg < 3; pg++) {
-        // Find ALL checkboxes on the current page
-        const checkboxes = document.querySelectorAll('input[type=checkbox]');
-        log.push('Found ' + checkboxes.length + ' checkboxes');
-        
-        if (checkboxes.length === 0) break;
-        
-        for (const cb of checkboxes) {
-          // Get the word label
+      // Now try dispatchEvent on any remaining unchecked
+      const evResult = await page.evaluate(() => {
+        const cbs = document.querySelectorAll('input[type=checkbox]');
+        let evCount = 0;
+        for (const cb of cbs) {
+          if (!cb.checked) {
+            cb.checked = true;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+            cb.dispatchEvent(new Event('input', { bubbles: true }));
+            evCount++;
+          }
+        }
+        const words = Array.from(cbs).map(cb => {
           let label = '';
           const lbl = document.querySelector('label[for=' + CSS.escape(cb.id) + ']');
           if (lbl) label = lbl.textContent.trim();
           else if (cb.parentElement) label = cb.parentElement.textContent.trim();
-          const word = label.split(/\s+/)[0].toLowerCase().replace(/[^a-z]/g, '');
-          
-          if (!word || word.length < 2) continue;
-          if (allWords.includes(word)) continue;
-          
-          allWords.push(word);
-          
-          // Probability based on word length
-          const prob = Math.min(0.7, 0.15 + (1 / Math.max(word.length, 3)) * 2.0);
-          
-          if (Math.random() < prob) {
-            allKnown.push(word);
-            // === TRIPLE approach to check the checkbox ===
-            cb.focus();
-            cb.click();
-            cb.checked = true;
-            cb.dispatchEvent(new Event('change', { bubbles: true }));
-            cb.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }
-        
-        // Check for Continue button
-        const buttons = document.querySelectorAll('button');
-        let foundContinue = false;
-        for (const btn of buttons) {
-          if (btn.textContent.toLowerCase().includes('continue')) {
-            btn.click();
-            foundContinue = true;
-            break;
-          }
-        }
-        
-        if (!foundContinue) break;
-        
-        // Wait for next page (synchronous sleep in evaluate)
-        const deadline = Date.now() + 5000;
-        while (Date.now() < deadline) {}
-      }
+          return label.split(/\\s+/)[0].toLowerCase().replace(/[^a-z]/g, '');
+        }).filter(w => w && w.length >= 2);
+        const checkedCount = Array.from(cbs).filter(cb => cb.checked).length;
+        return { evCount, words, checkedCount };
+      });
+      console.log('[scrape] After events:', evResult.checkedCount, 'checked,', evResult.evCount, 'via dispatchEvent');
+      console.log('[scrape] Words found:', evResult.words.length);
+      console.log('[scrape] First 5 words:', JSON.stringify(evResult.words.slice(0, 5)));
       
-      // Extract estimate from result page
-      const text = document.body.innerText;
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      let estimate = 0;
+      // Click Continue
+      const contBtn = page.locator('button').filter({ hasText: 'Continue' });
+      if (await contBtn.count() > 0) {
+        console.log('[scrape] Clicking Continue...');
+        await contBtn.first().click();
+        await page.waitForTimeout(5000);
+        console.log('[scrape] After Continue URL:', page.url());
+        
+        // Handle additional pages
+        let moreCbs = page.locator('input[type=checkbox]');
+        let moreCount = await moreCbs.count();
+        console.log('[scrape] Next page checkboxes:', moreCount);
+        
+        if (moreCount > 0) {
+          for (let i = 0; i < moreCount; i++) {
+            try {
+              await moreCbs.nth(i).click({ force: true });
+            } catch(e) {}
+          }
+          // dispatchEvent fallback
+          await page.evaluate(() => {
+            const cbs = document.querySelectorAll('input[type=checkbox]');
+            for (const cb of cbs) {
+              if (!cb.checked) {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            }
+          });
+          // Click Continue again
+          const cont2 = page.locator('button').filter({ hasText: 'Continue' });
+          if (await cont2.count() > 0) {
+            await cont2.first().click();
+            await page.waitForTimeout(5000);
+          }
+        }
+      }
+    }
+
+    await page.waitForTimeout(3000);
+    console.log('[scrape] Final URL:', page.url());
+
+    // Extract estimate
+    const est = await page.evaluate(() => {
+      const lines = document.body.innerText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
       for (let i = 1; i < lines.length; i++) {
         if (lines[i].toLowerCase() === 'words' || lines[i].toLowerCase() === 'word') {
-          const m = lines[i-1].match(/^(\d{3,5})$/);
-          if (m) { const n = parseInt(m[1]); if (n >= 500 && n <= 50000) { estimate = n; break; } }
+          const m = lines[i-1].match(/^(\\d{3,5})$/);
+          if (m) { const n = parseInt(m[1]); if (n >= 500 && n <= 50000) return n; }
         }
       }
-      if (estimate === 0) {
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].toLowerCase().includes('awesome')) {
-            for (let j = i+1; j <= Math.min(lines.length-1, i+10); j++) {
-              const m = lines[j].match(/^(\d{3,5})$/);
-              if (m) { const n = parseInt(m[1]); if (n >= 500 && n <= 50000) { estimate = n; break; } }
-            }
-            if (estimate) break;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase().includes('awesome')) {
+          for (let j = i+1; j <= Math.min(lines.length-1, i+10); j++) {
+            const m = lines[j].match(/^(\\d{3,5})$/);
+            if (m) { const n = parseInt(m[1]); if (n >= 500 && n <= 50000) return n; }
           }
         }
       }
-      
-      const unknown = allWords.filter(w => !allKnown.includes(w));
-      log.push('Total words: ' + allWords.length + ', Known: ' + allKnown.length + ', Unknown: ' + unknown.length + ', Estimate: ' + estimate);
-      
-      return { knownWords: allKnown, unknownWords: unknown, standardEstimate: estimate, log: log };
+      return 0;
+    });
+    console.log('[scrape] Estimate:', est);
+
+    // Get known/unknown words from evaluate
+    const finalData = await page.evaluate(() => {
+      const cbs = document.querySelectorAll('input[type=checkbox]');
+      const known = [], all = [];
+      for (const cb of cbs) {
+        let label = '';
+        const lbl = document.querySelector('label[for=' + CSS.escape(cb.id) + ']');
+        if (lbl) label = lbl.textContent.trim();
+        else if (cb.parentElement) label = cb.parentElement.textContent.trim();
+        const word = label.split(/\\s+/)[0].toLowerCase().replace(/[^a-z]/g, '');
+        if (word && word.length >= 2) {
+          all.push(word);
+          if (cb.checked) known.push(word);
+        }
+      }
+      const unknown = all.filter(w => !known.includes(w));
+      return { knownWords: [...new Set(known)], unknownWords: [...new Set(unknown)] };
     });
     
-    console.log('[scrape] Log:');
-    result.log.forEach(l => console.log('[scrape]', l));
-    console.log('[scrape] Estimate:', result.standardEstimate);
-    console.log('[scrape] Words:', result.knownWords.length + result.unknownWords.length);
-    fs.writeFileSync(resultPath, JSON.stringify({ knownWords: result.knownWords, unknownWords: result.unknownWords, standardEstimate: result.standardEstimate }));
+    console.log('[scrape] Known:', finalData.knownWords.length, 'Unknown:', finalData.unknownWords.length);
+    fs.writeFileSync(resultPath, JSON.stringify({ knownWords: finalData.knownWords, unknownWords: finalData.unknownWords, standardEstimate: est }));
     console.log('[scrape] Saved');
   } catch(e) {
     console.log('[scrape] Error:', e.message);
