@@ -92,7 +92,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { importCorpusText, analyzeAllCorpuses } from '../api/corpusApi'
+import { importCorpusText, analyzeCorpus, analyzeAllCorpuses } from '../api/corpusApi'
 
 const corpusText = ref('')
 const analysisResult = ref(null)
@@ -110,17 +110,30 @@ async function analyzeText() {
   analyzing.value = true; analysisResult.value = null; extractedWords.value = []
   try {
     const importRes = await importCorpusText('C', corpusText.value)
-    if (importRes.code !== 200) { ElMessage.error('导入失败'); analyzing.value = false; return }
-    if (importRes.data && importRes.data.extractedWords) { try { extractedWords.value = JSON.parse(importRes.data.extractedWords) } catch (e) {} }
-    const analyzeRes = await analyzeAllCorpuses()
-    if (analyzeRes.code === 200) {
-      const results = analyzeRes.data || []
-      if (results.length > 0) {
-        const match = results.find(r => r.corpusType === 'C') || results[0]
-        analysisResult.value = { estimate: match.estimate?.estimate, minRange: match.estimate?.minRange, maxRange: match.estimate?.maxRange, confidence: match.estimate?.confidence, totalWords: match.totalWords, validSamples: (match.estimate?.knownCount || 0) + (match.estimate?.unknownCount || 0) }
-      } else { ElMessage.warning('分析没有返回结果') }
+    if (importRes.code !== 200) { ElMessage.error('导入失败: ' + (importRes.message || '')); analyzing.value = false; return }
+    const corpusId = importRes.data?.id
+    if (importRes.data && importRes.data.extractedWords) {
+      try { 
+        const parsed = JSON.parse(importRes.data.extractedWords)
+        extractedWords.value = parsed
+      } catch (e) {}
     }
-  } catch (e) { ElMessage.error('分析失败') }
+    if (!corpusId) { ElMessage.error('导入后未获取到语料ID'); analyzing.value = false; return }
+    const analyzeRes = await analyzeCorpus(corpusId)
+    if (analyzeRes.code === 200 && analyzeRes.data) {
+      const r = analyzeRes.data
+      analysisResult.value = {
+        estimate: r.estimate?.estimate || 0,
+        minRange: r.estimate?.minRange || 0,
+        maxRange: r.estimate?.maxRange || 0,
+        confidence: r.estimate?.confidence || 0,
+        totalWords: r.totalWords || 0,
+        validSamples: (r.estimate?.knownCount || 0) + (r.estimate?.unknownCount || 0)
+      }
+    } else {
+      ElMessage.warning('分析没有返回结果')
+    }
+  } catch (e) { ElMessage.error('分析失败: ' + e.message) }
   finally { analyzing.value = false }
 }
 </script>

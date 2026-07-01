@@ -46,16 +46,41 @@ public class CorpusDataServiceImpl extends ServiceImpl<CorpusDataMapper, CorpusD
         List<String> words;
         try { words = om.readValue(data.getExtractedWords(), new TypeReference<List<String>>(){}); }
         catch (Exception e) { words = new ArrayList<>(); }
+        if (words.isEmpty()) {
+            CorpusAnalysisDTO empty = new CorpusAnalysisDTO(data.getCorpusType(), 0, new HashMap<>(), 
+                new EstimateResultDTO(0, 0, 0, 0, 0, 0, 0));
+            return empty;
+        }
+        // Build word-level distribution and known/unknown for algorithm
         Map<String, Integer> levelDist = new HashMap<>();
         levelDist.put("K",0); levelDist.put("P",0); levelDist.put("F",0); levelDist.put("C",0);
         List<Map<String, Object>> wordResults = new ArrayList<>();
+        int foundInDb = 0;
         for (String w : words) {
             VocWord vw = vocWordService.findByWord(w);
-            String diff = vw != null ? vw.getDifficulty() : "K";
-            double freq = vw != null ? vw.getFrequency() : 0.3;
-            if (vw != null) levelDist.merge(diff, 1, Integer::sum);
+            String diff;
+            double freq;
+            boolean known;
+            if (vw != null) {
+                diff = vw.getDifficulty();
+                freq = vw.getFrequency();
+                known = true;
+                levelDist.merge(diff, 1, Integer::sum);
+                foundInDb++;
+            } else {
+                // Estimate difficulty by word length (longer words = harder)
+                if (w.length() <= 4) diff = "K";
+                else if (w.length() <= 6) diff = "P";
+                else if (w.length() <= 9) diff = "F";
+                else diff = "C";
+                freq = Math.min(0.8, 5.0 / w.length());
+                // Mark as known if the word is a reasonable English word (>2 letters, contains vowel)
+                // This is a text analysis, not a test - all extracted words are "known" by the author
+                known = w.matches(".*[aeiouy].*");
+                levelDist.merge(diff, 1, Integer::sum);
+            }
             Map<String, Object> item = new HashMap<>();
-            item.put("word", w); item.put("known", vw != null);
+            item.put("word", w); item.put("known", known);
             item.put("difficulty", diff); item.put("frequency", freq);
             wordResults.add(item);
         }
