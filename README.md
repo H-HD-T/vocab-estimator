@@ -305,7 +305,6 @@ npm run dev
  
 ---  
   
-## Cross-Platform Notes 
  
 ### 1. Project Path  
  
