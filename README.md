@@ -302,54 +302,62 @@ npm run dev
 
 ---
 
-## 跨平台注意事项
+ 
+---  
+  
+## Cross-Platform Notes 
+ 
+### 1. Project Path  
+ 
+backend-scrape.js uses process.cwd() instead of hardcoded paths. 
+ 
+### 2. Playwright Setup  
+ 
+Run in project root: 
+npm install 
+ 
+### 3. Backend Auto-Detect  
+ 
+getRootDir() traverses up from user.dir to find backend-scrape.js.
+## Cross-Platform Notes
 
-### 1. 项目路径
+### 1. Project Path
 
-ackend-scrape.js 使用 process.cwd() 获取当前工作目录作为结果文件路径，不再硬编码绝对路径。Java 后端通过 ProcessBuilder.directory(rootDir) 设置工作目录，两者一致。
+`backend-scrape.js` uses `process.cwd()` for the result file path instead of hardcoded absolute paths.
+The Java backend sets the working directory via `ProcessBuilder.directory(rootDir)`, making them consistent.
 
-### 2. 算法验证功能 (Playwright)
+### 2. Algorithm Validation (Playwright)
 
-算法验证页面的"采集一轮"功能依赖 Playwright 自动化浏览器：
+The "Collect One" button on the Validation page requires Playwright.
 
-**首次使用需安装依赖：**
-\\\ash
-# 在项目根目录执行
-cd 项目目录
+First-time setup:
+```bash
+# Run in project root
+cd /path/to/project
 npm install
-# 会自动安装 Playwright + Chromium 浏览器
-\\\
+# This auto-runs: npx playwright install chromium
+```
 
-根目录的 \package.json\ 已配置 \postinstall\ 脚本，\
-pm install\ 会自动执行 \
-px playwright install chromium\。
+Requirements:
+- `node` must be in PATH
+- Playwright downloads Chromium automatically
+- First run opens a visible Chrome window
 
-**Playwright 路径要求：**
-- \
-ode\ 命令需在 PATH 环境中
-- Playwright 会自动下载 Chromium 到系统目录
-- 首次运行会弹出 Chrome 浏览器窗口完成测试
+### 3. Backend Path Auto-Detect
 
-### 3. 后端路径自动探测
+The Java `getRootDir()` method traverses up from `user.dir` to find `backend-scrape.js`:
+- Backend started from `vocab-estimator-backend/` -> parent dir has `backend-scrape.js` -> found
+- IDEA: set `user.dir` to project root
 
-Java 后端的 \getRootDir()\ 方法会从 \user.dir\ 逐级向上遍历，寻找 \ackend-scrape.js\ 文件定位项目根目录：
-- 后端通过 \ocab-estimator-backend/\ 启动 → 父目录含 \ackend-scrape.js\ → 找到根目录
-- 也可在 IDEA 中直接启动，\user.dir\ 为项目根目录
+### 4. MySQL Configuration
 
-### 4. MySQL 配置
+Edit `vocab-estimator-backend/src/main/resources/application.yml`:
+```yaml
+spring.datasource.password: your_password
+```
 
-\pplication.yml\ 中的数据库密码需根据部署环境修改：
+### 5. Known Limitations
 
-\\\yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/vocab_estimator?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: 你的密码
-\\\
-
-### 5. 已知限制
-
-- 算法验证需要外网访问 \preply.com\ (testyourvocab 已重定向至 Preply)
-- 首次 Playwright 启动可能较慢，需等待 Chromium 下载
-- Windows 沙箱环境下 Chrome 窗口可能不显示，建议直接启动后端
+- Validation requires internet access to `preply.com` (testyourvocab redirects there)
+- First Playwright launch is slow (downloads Chromium)
+- In sandbox/headless environments, Chrome window may not show
