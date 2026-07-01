@@ -8,8 +8,6 @@ import com.vocab.estimator.entity.VocWord;
 import com.vocab.estimator.mapper.CorpusDataMapper;
 import com.vocab.estimator.service.CorpusDataService;
 import com.vocab.estimator.service.VocWordService;
-import com.vocab.estimator.algorithm.AlgorithmFactory;
-import com.vocab.estimator.algorithm.AlgorithmResult;
 import com.vocab.estimator.dto.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,7 +19,6 @@ import java.util.regex.Pattern;
 public class CorpusDataServiceImpl extends ServiceImpl<CorpusDataMapper, CorpusData> implements CorpusDataService {
 
     @Autowired private VocWordService vocWordService;
-    @Autowired private AlgorithmFactory algorithmFactory;
     private final ObjectMapper om = new ObjectMapper();
     private final Pattern WORD_PATTERN = Pattern.compile("[a-zA-Z]{2,}");
 
@@ -48,50 +45,76 @@ public class CorpusDataServiceImpl extends ServiceImpl<CorpusDataMapper, CorpusD
         catch (Exception e) { words = new ArrayList<>(); }
         if (words.isEmpty()) {
             CorpusAnalysisDTO empty = new CorpusAnalysisDTO(data.getCorpusType(), 0, new HashMap<>(), 
-                new EstimateResultDTO(0, 0, 0, 0, 0, 0, 0));
+                new EstimateResultDTO(0, 0, 0, 0.0, 0, 0, 0));
             return empty;
         }
-        // Build word-level distribution and known/unknown for algorithm
+        // Build word-level distribution - classify each word by difficulty
         Map<String, Integer> levelDist = new HashMap<>();
         levelDist.put("K",0); levelDist.put("P",0); levelDist.put("F",0); levelDist.put("C",0);
-        List<Map<String, Object>> wordResults = new ArrayList<>();
-        int foundInDb = 0;
+        
         for (String w : words) {
             VocWord vw = vocWordService.findByWord(w);
             String diff;
-            double freq;
-            boolean known;
             if (vw != null) {
                 diff = vw.getDifficulty();
-                freq = vw.getFrequency();
-                known = true;
-                levelDist.merge(diff, 1, Integer::sum);
-                foundInDb++;
             } else {
                 // Estimate difficulty by word length (longer words = harder)
                 if (w.length() <= 4) diff = "K";
                 else if (w.length() <= 6) diff = "P";
                 else if (w.length() <= 9) diff = "F";
                 else diff = "C";
-                freq = Math.min(0.8, 5.0 / w.length());
-                // Mark as known if the word is a reasonable English word (>2 letters, contains vowel)
-                // This is a text analysis, not a test - all extracted words are "known" by the author
-                known = w.matches(".*[aeiouy].*");
-                levelDist.merge(diff, 1, Integer::sum);
             }
-            Map<String, Object> item = new HashMap<>();
-            item.put("word", w); item.put("known", known);
-            item.put("difficulty", diff); item.put("frequency", freq);
-            wordResults.add(item);
+            levelDist.merge(diff, 1, Integer::sum);
         }
-        AlgorithmResult ar = algorithmFactory.estimateAll(wordResults);
-        EstimateResultDTO est = new EstimateResultDTO(ar.getEstimate(), ar.getMinRange(), ar.getMaxRange(),
-            ar.getConfidence(), ar.getKnownCount(), ar.getUnknownCount(), words.size());
-        CorpusAnalysisDTO dto = new CorpusAnalysisDTO(data.getCorpusType(), words.size(), levelDist, est);
+        
+        // Calculate estimated vocabulary based on difficulty distribution
+        // Weighted average: higher level words -> higher vocabulary estimate
+        // Base vocabulary per level: K=500, P=2000, F=5000, C=15000+
+        Map<String, Integer> vocabBase = new HashMap<>();
+        vocabBase.put("K", 500);
+        vocabBase.put("P", 2000);
+        vocabBase.put("F", 5000);
+        vocabBase.put("C", 15000);
+        
+        int total = words.size();
+        double weightedVocab = 0;
+        double levelConfidence = 0;
+        
+        for (String level : new String[]{"K","P","F","C"}) {
+            int count = levelDist.getOrDefault(level, 0);
+            double ratio = total > 0 ? (double) count / total : 0;
+            int base = vocabBase.getOrDefault(level, 500);
+            // Weighted contribution: higher levels have higher vocabulary impact
+            weightedVocab += ratio * base;
+            // Track confidence based on data coverage
+            if (count > 0) levelConfidence += ratio;
+        }
+        
+        // The estimate is the weighted vocabulary level
+        int estimate = (int) weightedVocab;
+        // Range: +/- 30% for confidence interval
+        int rangeWidth = (int)(estimate * 0.3);
+        int minRange = Math.max(100, estimate - rangeWidth);
+        int maxRange = estimate + rangeWidth;
+        
+        // Confidence: based on sample size and level distribution clarity
+        double sampleConf = Math.min(1.0, total / 30.0);
+        double distributionClarity = 1.0;
+        // Check if most words concentrate in one level
+        int maxLevel = levelDist.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        if (maxLevel > 0) {
+            double dominantRatio = (double) maxLevel / total;
+            distributionClarity = 0.3 + dominantRatio * 0.7; // higher if one level dominates
+        }
+        double confidence = (sampleConf * 0.5 + distributionClarity * 0.5) * 100;
+        confidence = Math.min(100, Math.max(5, confidence));
+        
+        EstimateResultDTO est = new EstimateResultDTO(estimate, minRange, maxRange, 
+            confidence, total, 0, total);
+        CorpusAnalysisDTO dto = new CorpusAnalysisDTO(data.getCorpusType(), total, levelDist, est);
         try { data.setAnalysisResult(om.writeValueAsString(dto)); updateById(data); } catch (Exception e) {}
         return dto;
     }
-
     @Override
     public List<CorpusAnalysisDTO> analyzeAllCorpuses() {
         List<CorpusAnalysisDTO> results = new ArrayList<>();
