@@ -47,3 +47,4 @@ id_ed25519*
 charts/  
 vocab_single.json 
 git_push.bat  
+!package.json  
