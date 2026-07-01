@@ -39,3 +39,6 @@ file')
 
 # SSH keys
 id_ed25519*
+
+# Scripts
+*.bat
