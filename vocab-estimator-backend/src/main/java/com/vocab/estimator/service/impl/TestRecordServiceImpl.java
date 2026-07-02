@@ -37,8 +37,8 @@ public class TestRecordServiceImpl extends ServiceImpl<TestRecordMapper, TestRec
             Map<String, Object> item = new HashMap<>();
             item.put("word", word);
             item.put("known", known != null && known);
-            item.put("difficulty", vw != null ? vw.getDifficulty() : "K");
-            item.put("frequency", vw != null ? vw.getFrequency() : 0.5);
+            item.put("difficulty", vw != null ? vw.getDifficulty() : guessDifficulty(word));
+            item.put("frequency", vw != null ? vw.getFrequency() : Math.min(0.8, 5.0 / Math.max(word.length(), 2)));
             wordResults.add(item);
         }
         AlgorithmResult ar = algorithmFactory.estimateAll(wordResults);
@@ -60,5 +60,13 @@ public class TestRecordServiceImpl extends ServiceImpl<TestRecordMapper, TestRec
     @Override
     public List<TestRecord> getUserTestHistory(Long userId) {
         return baseMapper.findByUserId(userId);
+    }
+
+    private String guessDifficulty(String word) {
+        int len = word.length();
+        if (len <= 4) return "K";
+        else if (len <= 6) return "P";
+        else if (len <= 9) return "F";
+        else return "C";
     }
 }

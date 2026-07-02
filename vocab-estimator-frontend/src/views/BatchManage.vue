@@ -217,18 +217,26 @@ async function processBatch() {
     const res = await uploadBatchText({ textContent: textInput.value })
     if (res.code === 200) {
       const results = res.data.results || []
-      const words = []; let totalKnown = 0, totalUnknown = 0, sumEstimate = 0, sumMin = 0, sumMax = 0, sumConfidence = 0, validCount = 0
+      const firstEst = results.length > 0 ? results[0].estimate : null
+      const words = []; let totalKnown = 0, totalUnknown = 0
       for (const r of results) {
         const parts = (r.wordLine || '').split(',')
         const word = parts[0]?.trim() || ''
         const known = (parts[1]?.trim() || '').toLowerCase() === 'known' || (parts[1]?.trim() || '').toLowerCase() === '认识'
         words.push({ word, known, difficulty: r.estimate?.difficulty || '', definition: r.estimate?.definition || '' })
         if (known) totalKnown++; else totalUnknown++
-        if (r.estimate) { sumEstimate += r.estimate.estimate || 0; sumMin += r.estimate.minRange || 0; sumMax += r.estimate.maxRange || 0; sumConfidence += r.estimate.confidence || 0; validCount++ }
       }
       parsedWords.value = words
-      if (validCount > 0) { batchResult.value = { estimate: Math.round(sumEstimate / validCount), minRange: Math.round(sumMin / validCount), maxRange: Math.round(sumMax / validCount), confidence: sumConfidence / validCount, knownCount: totalKnown, unknownCount: totalUnknown } }
-      else { ElMessage.warning('无法解析词表') }
+      if (firstEst) {
+        batchResult.value = { 
+          estimate: firstEst.estimate || 0, 
+          minRange: firstEst.minRange || 0, 
+          maxRange: firstEst.maxRange || 0, 
+          confidence: firstEst.confidence || 0, 
+          knownCount: totalKnown, 
+          unknownCount: totalUnknown 
+        }
+      } else { ElMessage.warning('无法解析词表') }
     }
   } catch (e) { ElMessage.error('批量计算失败') }
   finally { loading.value = false }

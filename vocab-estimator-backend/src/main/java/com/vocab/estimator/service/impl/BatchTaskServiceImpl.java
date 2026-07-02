@@ -23,26 +23,44 @@ public class BatchTaskServiceImpl extends ServiceImpl<BatchTaskMapper, BatchTask
 
     @Override
     public BatchResultDTO processBatchWords(List<String> wordLines) {
+        // Process ALL words together as one vocabulary test
         List<BatchResultDTO.BatchItemResult> results = new ArrayList<>();
+        List<Map<String, Object>> allWordResults = new ArrayList<>();
+        int totalKnown = 0, totalUnknown = 0;
+        
         for (String line : wordLines) {
             if (line.trim().isEmpty()) continue;
             String[] parts = line.split("[,;]");
             String word = parts[0].trim();
-            boolean known = parts.length > 1 && (parts[1].trim().toLowerCase().contains("known") ||
-                parts[1].trim().toLowerCase().contains("yes") || parts[1].trim().contains("true") ||
-                parts[1].trim().contains("1") || parts[1].trim().contains("reco"));
+            boolean known = false;
+            if (parts.length > 1) {
+                String tag = parts[1].trim().toLowerCase();
+                known = tag.equals("known") || tag.equals("yes") || tag.equals("true") || tag.equals("1")
+                    || tag.equals("recognized") || tag.contains("known,")
+                    || tag.startsWith("known") || tag.startsWith("yes") || tag.startsWith("recognized");
+            }
             VocWord vw = vocWordService.findByWord(word);
-            List<Map<String, Object>> wr = new ArrayList<>();
+            String difficulty = vw != null ? vw.getDifficulty() : guessDifficulty(word);
+            double freq = vw != null ? vw.getFrequency() : Math.min(0.8, 5.0 / Math.max(word.length(), 2));
+            
             Map<String, Object> item = new HashMap<>();
             item.put("word", word);
             item.put("known", known);
-            item.put("difficulty", vw != null ? vw.getDifficulty() : "K");
-            item.put("frequency", vw != null ? vw.getFrequency() : 0.5);
-            wr.add(item);
-            AlgorithmResult ar = algorithmFactory.estimateAll(wr);
-            EstimateResultDTO dto = new EstimateResultDTO(ar.getEstimate(), ar.getMinRange(), ar.getMaxRange(),
-                ar.getConfidence(), ar.getKnownCount(), ar.getUnknownCount(), ar.getTotalWords());
-            results.add(new BatchResultDTO.BatchItemResult(line, dto));
+            item.put("difficulty", difficulty);
+            item.put("frequency", freq);
+            allWordResults.add(item);
+            if (known) totalKnown++; else totalUnknown++;
+        }
+        
+        // Run algorithm ONCE on ALL words combined
+        AlgorithmResult ar = algorithmFactory.estimateAll(allWordResults);
+        EstimateResultDTO combinedDto = new EstimateResultDTO(ar.getEstimate(), ar.getMinRange(), ar.getMaxRange(),
+            ar.getConfidence(), ar.getKnownCount(), ar.getUnknownCount(), ar.getTotalWords());
+        
+        // Also create per-word items with algorithm info for display
+        for (String line : wordLines) {
+            if (line.trim().isEmpty()) continue;
+            results.add(new BatchResultDTO.BatchItemResult(line, combinedDto));
         }
         return new BatchResultDTO(results, String.valueOf(System.currentTimeMillis()));
     }
@@ -137,5 +155,13 @@ public class BatchTaskServiceImpl extends ServiceImpl<BatchTaskMapper, BatchTask
     }
     public List<BatchTask> getTaskHistory() {
         return baseMapper.findAllOrderByTime();
+    }
+
+    private String guessDifficulty(String word) {
+        int len = word.length();
+        if (len <= 4) return "K";
+        else if (len <= 6) return "P";
+        else if (len <= 9) return "F";
+        else return "C";
     }
 }
