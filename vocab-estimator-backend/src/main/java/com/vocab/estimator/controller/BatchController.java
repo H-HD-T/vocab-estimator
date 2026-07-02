@@ -51,6 +51,16 @@ public class BatchController {
         return Result.success(batchTaskService.runSamplingTest(sampleLength, knowRatio));
     }
 
+    @PostMapping("/stability-test")
+    public Result<StabilityResultDTO> stabilityTest() {
+        try {
+            StabilityResultDTO result = batchTaskService.runStabilityTest();
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("???????: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/history")
     public Result<List<BatchTask>> getHistory() {
         return Result.success(batchTaskService.getTaskHistory());

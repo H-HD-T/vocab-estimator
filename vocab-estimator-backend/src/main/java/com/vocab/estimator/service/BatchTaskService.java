@@ -11,6 +11,8 @@ import java.util.List;
 public interface BatchTaskService extends IService<BatchTask> {
     BatchResultDTO processBatchWords(List<String> wordLines);
     BatchResultDTO processBatchText(String textContent);
-    SamplingResultDTO runSamplingTest(int sampleLength, int knowRatio);
+        SamplingResultDTO runSamplingTest(int sampleLength, int knowRatio);
+    StabilityResultDTO runStabilityTest();
+
     List<BatchTask> getTaskHistory();
 }

@@ -17,3 +17,10 @@ export function runSamplingTest(params) {
 export function getBatchHistory() {
   return request.get('/batch/history')
 }
+
+export function runStabilityTest() {
+  return request.post('/batch/stability-test')
+}
+ {
+  return request.get('/batch/history')
+}

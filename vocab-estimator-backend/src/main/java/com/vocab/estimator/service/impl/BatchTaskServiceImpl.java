@@ -83,6 +83,58 @@ public class BatchTaskServiceImpl extends ServiceImpl<BatchTaskMapper, BatchTask
     }
 
     @Override
+    public StabilityResultDTO runStabilityTest() {
+        // Use ALL voc_word as vocabulary list A for stability testing
+        List<VocWord> allWords = vocWordService.list();
+        if (allWords.size() < 20) {
+            return new StabilityResultDTO(new ArrayList<>());
+        }
+        
+        int[] ratios = {10, 20, 30};         // know ratio percentages
+        int[] lengths = {200, 300, 400};     // test list lengths  
+        int runsPerCombo = 100;              // repeat 100 times per combo
+        
+        List<StabilityResultDTO.StabilityComboResult> combos = new ArrayList<>();
+        
+        int totalAvailable = allWords.size();
+        
+        for (int ratio : ratios) {
+            for (int len : lengths) {
+                List<Integer> estimates = new ArrayList<>();
+                
+                for (int run = 0; run < runsPerCombo; run++) {
+                    List<Map<String, Object>> wordResults = new ArrayList<>();
+                    
+                    // Sample with replacement if len > totalAvailable
+                    for (int i = 0; i < len; i++) {
+                        VocWord w = allWords.get(random.nextInt(totalAvailable));
+                        Map<String, Object> item = new HashMap<>();
+                        item.put("word", w.getWord());
+                        item.put("known", random.nextInt(100) < ratio);
+                        item.put("difficulty", w.getDifficulty());
+                        item.put("frequency", w.getFrequency());
+                        wordResults.add(item);
+                    }
+                    
+                    int est = algorithmFactory.estimateAll(wordResults).getEstimate();
+                    estimates.add(est);
+                }
+                
+                double mean = estimates.stream().mapToInt(Integer::intValue).average().orElse(0);
+                double variance = estimates.stream()
+                    .mapToDouble(v -> Math.pow(v - mean, 2)).average().orElse(0);
+                
+                combos.add(new StabilityResultDTO.StabilityComboResult(
+                    ratio, len, runsPerCombo,
+                    Math.round(mean * 100.0) / 100.0,
+                    Math.round(variance * 100.0) / 100.0,
+                    estimates
+                ));
+            }
+        }
+        
+        return new StabilityResultDTO(combos);
+    }
     public List<BatchTask> getTaskHistory() {
         return baseMapper.findAllOrderByTime();
     }
