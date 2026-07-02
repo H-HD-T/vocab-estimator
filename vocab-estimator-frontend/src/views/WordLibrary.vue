@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="wordlib-page">
     <div class="page-title">
       <span class="title-icon"><el-icon><Notebook /></el-icon></span>

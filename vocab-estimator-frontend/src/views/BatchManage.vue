@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="batch-page">
     <div class="page-title">
       <span class="title-icon"><el-icon><Upload /></el-icon></span>
@@ -13,17 +13,11 @@
           </span>
         </div>
         <div style="padding: 16px;">
-          <el-input
-            v-model="textInput"
-            type="textarea"
-            :rows="10"
-            placeholder="每行一个单词，格式: 单词, 认识(或不认识)&#10;例如:&#10;apple, known&#10;philosophy, unknown&#10;abandon, recognized"
-          />
+          <el-input v-model="textInput" type="textarea" :rows="10"
+            placeholder="每行一个单词，格式: 单词, 认识(或不认识)&#10;例如:&#10;apple, known&#10;philosophy, unknown&#10;abandon, recognized" />
           <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
             <el-upload action="#" accept=".txt" :show-file-list="false" :before-upload="handleFileUpload">
-              <el-button>
-                <el-icon><FolderOpened /></el-icon> 上传TXT文件
-              </el-button>
+              <el-button><el-icon><FolderOpened /></el-icon> 上传TXT文件</el-button>
             </el-upload>
             <button class="clay-btn clay-btn-primary" @click="processBatch" :disabled="loading">
               <el-icon v-if="loading" class="is-loading"><Loading /></el-icon>
@@ -62,7 +56,7 @@
           </div>
           <div v-else-if="parsedWords.length > 0" style="padding: 40px 20px; text-align: center; color: var(--clay-text-secondary);">
             <el-icon :size="40"><DataAnalysis /></el-icon>
-            <p style="margin-top: 8px;">请点击"批量计算"进行分析</p>
+            <p style="margin-top: 8px;">请点击“批量计算”进行分析</p>
           </div>
           <div v-else style="padding: 40px 20px; text-align: center; color: var(--clay-text-secondary);">
             <el-icon :size="40"><Tickets /></el-icon>
@@ -86,7 +80,8 @@
           <el-table-column prop="word" label="单词" width="140" />
           <el-table-column prop="known" label="标记" width="100">
             <template #default="{ row }">
-              <span class="clay-tag" :class="row.known ? 'clay-tag-green' : 'clay-tag-red'" style="font-size: 12px; padding: 2px 12px;">{{ row.known ? '认识' : '不认识' }}</span>
+              <span class="clay-tag" :class="row.known ? 'clay-tag-green' : 'clay-tag-red'"
+                style="font-size: 12px; padding: 2px 12px;">{{ row.known ? '认识' : '不认识' }}</span>
             </template>
           </el-table-column>
           <el-table-column prop="difficulty" label="难度" width="80" />
@@ -95,16 +90,79 @@
       </div>
     </div>
 
+    <!-- 算法稳定性验证卡片 -->
+    <div class="clay-card" style="margin-top: 20px; border-color: #6EE7B7;">
+      <div style="padding: 16px 20px; border-bottom: 2.5px solid #6EE7B7;">
+        <span style="font-family: 'Baloo 2', cursive; font-weight: 600; font-size: 17px;">
+          <el-icon style="vertical-align: middle; margin-right: 6px;"><DataAnalysis /></el-icon> 算法稳定性验证
+        </span>
+      </div>
+      <div style="padding: 16px;">
+        <div style="background: #F0FDF4; border-radius: 8px; border: 2.5px solid #BBF7D0; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+          <el-icon size="20" color="#16A34A"><InfoFilled /></el-icon>
+          <span style="font-size: 14px; color: #374151;">
+            从词汇库随机采样生成 9 种组合（认识比 10%/20%/30% x 长度 200/300/400），每种组合测试 100 次，共 900 次
+          </span>
+        </div>
+        <button class="clay-btn clay-btn-danger" @click="runStability" :disabled="stabilityLoading"
+          style="margin-bottom: 16px; background: #DC2626; box-shadow: 0 4px 0 #991B1B;">
+          <el-icon v-if="stabilityLoading" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else><Lightning /></el-icon>
+          {{ stabilityLoading ? '运行中(900次)...' : '运行稳定性测试(900次)' }}
+        </button>
+        <div v-if="stabilityResult && stabilityResult.combos && stabilityResult.combos.length > 0">
+          <el-table :data="stabilityResult.combos" border stripe size="small" style="margin-bottom: 12px;">
+            <el-table-column label="认识比例" width="100">
+              <template #default="{ row }">{{ row.knowRatio }}%</template>
+            </el-table-column>
+            <el-table-column label="测试长度" width="100">
+              <template #default="{ row }">{{ row.sampleLength }} 词</template>
+            </el-table-column>
+            <el-table-column label="测试次数" width="100">
+              <template #default="{ row }">{{ row.runCount }}</template>
+            </el-table-column>
+            <el-table-column label="均值(词汇量)" width="140">
+              <template #default="{ row }">{{ (row.meanEstimate || 0).toFixed(0) }}</template>
+            </el-table-column>
+            <el-table-column label="方差" width="120">
+              <template #default="{ row }">{{ (row.variance || 0).toFixed(0) }}</template>
+            </el-table-column>
+            <el-table-column label="标准差" width="120">
+              <template #default="{ row }">{{ Math.sqrt(row.variance || 0).toFixed(0) }}</template>
+            </el-table-column>
+            <el-table-column label="合理性评估" width="160">
+              <template #default="{ row }">
+                <span v-if="!row.meanEstimate || row.meanEstimate <= 0" style="color: #DC2626;">异常</span>
+                <span v-else-if="row.variance / row.meanEstimate < 0.1" style="color: #16A34A;">稳定</span>
+                <span v-else-if="row.variance / row.meanEstimate < 0.3" style="color: #F59E0B;">较稳定</span>
+                <span v-else style="color: #DC2626;">不稳定</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <span v-for="c in stabilityResult.combos" :key="c.knowRatio + '-' + c.sampleLength"
+              style="background: #F0FDF4; border: 2px solid #BBF7D0; border-radius: 20px; padding: 4px 12px; font-size: 13px;">
+              {{ c.knowRatio }}% / {{ c.sampleLength }}词: {{ (c.meanEstimate || 0).toFixed(0) }} ± {{ Math.sqrt(c.variance || 0).toFixed(0) }}
+            </span>
+          </div>
+        </div>
+        <div v-else-if="stabilityResult" style="padding: 20px; text-align: center; color: #6B7280;">
+          词汇库中没有足够的单词
+        </div>
+      </div>
+    </div>
+
+    <!-- 采样测试卡片 -->
     <div class="clay-card" style="margin-top: 20px; border-color: #F9A8D4;">
       <div style="padding: 16px 20px; border-bottom: 2.5px solid #F9A8D4;">
         <span style="font-family: 'Baloo 2', cursive; font-weight: 600; font-size: 17px;">
-          <el-icon style="vertical-align: middle; margin-right: 6px;"><Refresh /></el-icon> 采样测试(稳定性验证)
+          <el-icon style="vertical-align: middle; margin-right: 6px;"><Refresh /></el-icon> 采样测试
         </span>
       </div>
       <div style="padding: 16px;">
         <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-family: 'Baloo 2', cursive; font-weight: 500; font-size: 14px; color: var(--clay-text-secondary);">采样长度</span>
+            <span style="font-size: 14px;">采样长度</span>
             <el-select v-model="samplingForm.sampleLength" style="width: 120px;">
               <el-option label="200 词" :value="200" />
               <el-option label="300 词" :value="300" />
@@ -112,7 +170,7 @@
             </el-select>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 200px;">
-            <span style="font-family: 'Baloo 2', cursive; font-weight: 500; font-size: 14px; color: var(--clay-text-secondary); white-space: nowrap;">认识比例(%)</span>
+            <span style="white-space: nowrap; font-size: 14px;">认识比例(%)</span>
             <el-slider v-model="samplingForm.knowRatio" :min="10" :max="90" style="flex: 1;" show-input />
           </div>
           <button class="clay-btn clay-btn-accent clay-btn-sm" @click="runSampling" :disabled="samplingLoading">
@@ -122,10 +180,10 @@
           </button>
         </div>
         <div v-if="samplingResult" style="margin-top: 12px;">
-          <div class="clay-card" style="border-color: #6EE7B7; padding: 12px 16px; border-radius: var(--clay-radius-sm);">
+          <div class="clay-card" style="border-color: #6EE7B7; padding: 12px 16px; border-radius: 8px;">
             <div style="display: flex; align-items: center; gap: 8px;">
               <el-icon size="20" color="#10B981"><SuccessFilled /></el-icon>
-              <span style="font-family: 'Comic Neue', sans-serif; font-size: 14px; color: var(--clay-text);">
+              <span style="font-size: 14px;">
                 均值: {{ samplingResult.meanEstimate || '-' }} | 方差: {{ samplingResult.variance || '-' }} | 样本数: {{ samplingResult.sampleCount || '-' }}
               </span>
             </div>
@@ -139,7 +197,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
-import { uploadBatchText, uploadBatchFile, runSamplingTest } from '../api/batchApi'
+import { uploadBatchText, uploadBatchFile, runSamplingTest, runStabilityTest } from '../api/batchApi'
 import * as XLSX from 'xlsx'
 
 const textInput = ref('')
@@ -149,6 +207,8 @@ const loading = ref(false)
 const samplingLoading = ref(false)
 const samplingResult = ref(null)
 const samplingForm = reactive({ sampleLength: 200, knowRatio: 50 })
+const stabilityLoading = ref(false)
+const stabilityResult = ref(null)
 
 async function processBatch() {
   if (!textInput.value.trim()) { ElMessage.warning('请先输入词表'); return }
@@ -187,8 +247,20 @@ async function runSampling() {
   finally { samplingLoading.value = false }
 }
 
+async function runStability() {
+  stabilityLoading.value = true; stabilityResult.value = null
+  try {
+    const res = await runStabilityTest()
+    if (res.code === 200) {
+      stabilityResult.value = res.data
+      ElMessage.success('稳定性测试完成 (9组合 x 100次 = 900次)')
+    } else { ElMessage.error(res.message || '稳定性测试失败') }
+  } catch (e) { ElMessage.error('稳定性测试失败: ' + e.message) }
+  finally { stabilityLoading.value = false }
+}
+
 function exportExcel() {
-  const data = parsedWords.value.map(r => ({ 单词: r.word, 标记: r.known ? '认识' : '不认识', 难度: r.difficulty || '', 释义: r.definition || '' }))
+  const data = parsedWords.value.map(r => ({ '单词': r.word, '标记': r.known ? '认识' : '不认识', '难度': r.difficulty || '', '释义': r.definition || '' }))
   const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, '批量结果'); XLSX.writeFile(wb, 'batch_results.xlsx'); ElMessage.success('导出成功')
 }

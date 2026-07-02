@@ -21,6 +21,3 @@ export function getBatchHistory() {
 export function runStabilityTest() {
   return request.post('/batch/stability-test')
 }
- {
-  return request.get('/batch/history')
-}

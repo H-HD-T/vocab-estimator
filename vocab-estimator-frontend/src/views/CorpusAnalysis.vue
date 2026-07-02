@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="corpus-page">
     <div class="page-title">
       <span class="title-icon"><el-icon><DataAnalysis /></el-icon></span>

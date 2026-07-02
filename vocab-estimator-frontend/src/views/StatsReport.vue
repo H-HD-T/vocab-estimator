@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="stats-page">
     <div class="page-title">
       <span class="title-icon"><el-icon><TrendCharts /></el-icon></span>

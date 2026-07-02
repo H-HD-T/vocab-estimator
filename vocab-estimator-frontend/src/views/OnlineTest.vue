@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="online-test-page">
     <div class="page-title">
       <span class="title-icon"><el-icon><Edit /></el-icon></span>
