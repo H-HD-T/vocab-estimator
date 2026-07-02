@@ -24,13 +24,13 @@ public class LevelCalibrationEstimator implements VocabEstimator {
     // Cumulative vocabulary per level (hierarchical)
     private static final Map<String, Integer> CUMULATIVE_VOCAB = new LinkedHashMap<>();
     static {
-        CUMULATIVE_VOCAB.put("K", 2000);
-        CUMULATIVE_VOCAB.put("P", 5000);
-        CUMULATIVE_VOCAB.put("F", 10000);
-        CUMULATIVE_VOCAB.put("C", 20000);
+        CUMULATIVE_VOCAB.put("K", 1500);
+        CUMULATIVE_VOCAB.put("P", 4000);
+        CUMULATIVE_VOCAB.put("F", 7000);
+        CUMULATIVE_VOCAB.put("C", 13000);
     }
     
-    private static final int MAX_VOCAB = 45000;
+    private static final int MAX_VOCAB = 25000;
 
     @Override
     public AlgorithmResult estimate(List<Map<String, Object>> wordResults) {

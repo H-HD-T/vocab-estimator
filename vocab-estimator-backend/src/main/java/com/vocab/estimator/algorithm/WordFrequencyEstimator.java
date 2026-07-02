@@ -27,13 +27,13 @@ public class WordFrequencyEstimator implements VocabEstimator {
     // Base vocabulary sizes per difficulty level
     private static final Map<String, Integer> LEVEL_BASE_VOCAB = new HashMap<>();
     static {
-        LEVEL_BASE_VOCAB.put("K", 1000);
-        LEVEL_BASE_VOCAB.put("P", 3000);
-        LEVEL_BASE_VOCAB.put("F", 6000);
-        LEVEL_BASE_VOCAB.put("C", 10000);
+        LEVEL_BASE_VOCAB.put("K", 600);
+        LEVEL_BASE_VOCAB.put("P", 2000);
+        LEVEL_BASE_VOCAB.put("F", 4000);
+        LEVEL_BASE_VOCAB.put("C", 6000);
     }
 
-    private static final int TOTAL_REFERENCE_VOCAB = 35000;
+    private static final int TOTAL_REFERENCE_VOCAB = 20000;
 
     @Override
     public AlgorithmResult estimate(List<Map<String, Object>> wordResults) {
