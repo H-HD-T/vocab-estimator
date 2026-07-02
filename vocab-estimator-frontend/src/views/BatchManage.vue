@@ -133,8 +133,8 @@
             <el-table-column label="合理性评估" width="160">
               <template #default="{ row }">
                 <span v-if="!row.meanEstimate || row.meanEstimate <= 0" style="color: #DC2626;">异常</span>
-                <span v-else-if="row.variance / row.meanEstimate < 0.1" style="color: #16A34A;">稳定</span>
-                <span v-else-if="row.variance / row.meanEstimate < 0.3" style="color: #F59E0B;">较稳定</span>
+                <span v-else-if="Math.sqrt(row.variance) / row.meanEstimate < 0.15" style="color: #16A34A;">稳定</span>
+                <span v-else-if="Math.sqrt(row.variance) / row.meanEstimate < 0.3" style="color: #F59E0B;">较稳定</span>
                 <span v-else style="color: #DC2626;">不稳定</span>
               </template>
             </el-table-column>
