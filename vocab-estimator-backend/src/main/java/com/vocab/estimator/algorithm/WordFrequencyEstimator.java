@@ -9,15 +9,20 @@ import java.util.*;
  * Core logic:
  * 1. Divide test words into K/P/F/C difficulty levels
  * 2. Each level has a target vocabulary size summing to ~40000 (TVY-compatible)
- * 3. Estimate = sum of (known_ratio_per_level × level_target)
- * 4. Consistency: higher-level ratio cannot exceed lower-level by 1.5x
- * 5. Output Di naturally falls in 0-40000 range, no post-hoc calibration needed
+ * 3. Estimate = sum of (known_ratio_per_level × level_target) per level
+ * 4. For levels with NO test data, use overall known ratio from levels with data
+ * 5. Consistency: higher-level ratio cannot exceed lower-level by 1.5x
+ * 6. Output Di naturally falls in 0-40000 range, no post-hoc calibration needed
  *
  * Level targets (additional words mastered at each stage):
  *   K:  2,000  (primary school)
  *   P:  5,000  (junior high, cumulative 7,000)
  *   F: 12,000  (senior high, cumulative 19,000)
  *   C: 21,000  (college/CET-6, cumulative 40,000)
+ *
+ * Key improvement: When all test words come from a single level (e.g. scraper assigns
+ * all words as "C"), empty levels use overall known ratio instead of fixed 0.5 default.
+ * This prevents inflating the estimate for users who only know ~30% of advanced words.
  */
 @Component
 public class WordFrequencyEstimator implements VocabEstimator {
@@ -59,12 +64,19 @@ public class WordFrequencyEstimator implements VocabEstimator {
         }
 
         int total = wordResults.size();
+        double overallKnownRatio = total > 0 ? (double) known / total : 0.5;
 
-        // Compute per-level known ratios
+        // === FIXED: For levels with no test data, use overall known ratio ===
+        // This prevents inflating estimate when scraper assigns all words to C level
         Map<String, Double> levelKnownRatio = new LinkedHashMap<>();
         for (String level : LEVEL_TARGET.keySet()) {
             int[] stats = levelStats.get(level);
-            levelKnownRatio.put(level, stats[1] > 0 ? (double) stats[0] / stats[1] : 0.5);
+            if (stats[1] > 0) {
+                levelKnownRatio.put(level, (double) stats[0] / stats[1]);
+            } else {
+                // No data for this level → use overall known ratio as proxy
+                levelKnownRatio.put(level, overallKnownRatio);
+            }
         }
 
         // Consistency constraint: higher level ratio capped by lower level
@@ -87,10 +99,9 @@ public class WordFrequencyEstimator implements VocabEstimator {
         }
         estimate = Math.max(0, Math.min(estimate, 40000));
 
-        // ---- Range and confidence (same logic, scaled to 40000 range) ----
+        // ---- Range and confidence ----
         double sampleFactor = Math.min(1.0, total / 40.0);
         double knownTotal = (double) known / total;
-        double extremeFactor = 1.0 - Math.abs(knownTotal - 0.5) * 0.8;
 
         double ratioStdDev = 0;
         double meanRatio = Arrays.stream(constrained).average().orElse(0.5);
@@ -106,7 +117,7 @@ public class WordFrequencyEstimator implements VocabEstimator {
         int minRange = Math.max(0, estimate - rangeWidth / 2);
         int maxRange = Math.min(40000, estimate + rangeWidth / 2);
 
-        // Confidence calculation
+        // Confidence
         double sampleConf = Math.min(1.0, total / 50.0);
         double balanceConf = 1.0 - Math.abs(knownTotal - 0.5) * 1.2;
         balanceConf = Math.max(0.2, Math.min(1.0, balanceConf));

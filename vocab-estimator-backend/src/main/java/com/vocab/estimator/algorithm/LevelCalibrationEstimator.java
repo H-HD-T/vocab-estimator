@@ -8,10 +8,10 @@ import java.util.*;
  *
  * Core logic:
  * 1. Use cumulative vocabulary at each level (hierarchical, sums to ~40000)
- * 2. Determine user tier based on highest level with >= 30% recognition
+ * 2. Determine user tier based on highest level with >= 20% recognition
  * 3. Validate: for high tiers (F/C), lower levels with data must be >= 80%
  * 4. Estimate = lower_bound + known_ratio × (upper_bound - lower_bound)
- * 5. If validation fails, downgrade tier
+ * 5. For levels with NO test data, use overall known ratio from levels with data
  * 6. Output Di naturally falls in 0-40000 range, no post-hoc calibration
  *
  * Cumulative vocab by level:
@@ -19,6 +19,9 @@ import java.util.*;
  *   P:  7,000  (mastered up to junior high)
  *   F: 19,000  (mastered up to senior high/gaokao)
  *   C: 40,000  (mastered up to college/CET-6)
+ *
+ * Key improvement: Empty levels use overall known ratio instead of fixed 0.5.
+ * Candidate threshold lowered to 0.2 for better inclusion of ~30% known-rate users.
  */
 @Component
 public class LevelCalibrationEstimator implements VocabEstimator {
@@ -54,6 +57,7 @@ public class LevelCalibrationEstimator implements VocabEstimator {
         }
 
         int total = wordResults.size();
+        double overallKnownRatio = total > 0 ? (double) known / total : 0.5;
 
         // Per-level recognition rates
         Map<String, Double> levelRates = new LinkedHashMap<>();
@@ -61,7 +65,8 @@ public class LevelCalibrationEstimator implements VocabEstimator {
         for (String level : CUMULATIVE_VOCAB.keySet()) {
             List<Boolean> results = levelResults.get(level);
             if (results.isEmpty()) {
-                levelRates.put(level, 0.5);
+                // === FIXED: Use overall known ratio for empty levels ===
+                levelRates.put(level, overallKnownRatio);
                 levelHasData.put(level, false);
             } else {
                 long knownCount = results.stream().filter(r -> r).count();
@@ -70,11 +75,13 @@ public class LevelCalibrationEstimator implements VocabEstimator {
             }
         }
 
-        // Find candidate tier: highest level with >= 30% recognition
+        // Find candidate tier: highest level with >= 20% recognition
+        // Lowered from 30% to 20% to include users with modest word recognition
         String candidateLevel = "K";
         for (String level : CUMULATIVE_VOCAB.keySet()) {
+            // Only use actual data levels for candidate decision, not proxy-filled ones
             if (!levelHasData.get(level)) continue;
-            if (levelRates.get(level) >= 0.3) {
+            if (levelRates.get(level) >= 0.2) {
                 candidateLevel = level;
             }
         }
