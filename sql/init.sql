@@ -1,4 +1,4 @@
-﻿-- Drop existing database to allow clean re-run
+-- Drop existing database to allow clean re-run
 DROP DATABASE IF EXISTS vocab_estimator;
 -- =============================================================
 -- English Vocabulary Estimation Tool - Database Initialization
@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS corpus_data (
 
 -- =============================================================
 -- Word data: see sql/word_data.sql for full word import (7533 words)
+-- K level: see sql/word_data_k.sql for 816 K-level words
 -- Run: SOURCE sql/word_data.sql  (after init.sql)
 -- =============================================================
 
