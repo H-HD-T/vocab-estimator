@@ -21,11 +21,17 @@ public class VocWordServiceImpl extends ServiceImpl<VocWordMapper, VocWord> impl
         dto.setTestId(System.currentTimeMillis());
         
         List<Map<String, Object>> words = new ArrayList<>();
-        String[] levels = {"K", "P", "F", "C"};
-        int perLevel = Math.max(1, wordCount / 4);
+        // Only query levels that actually have words in the database
+        String[] allLevels = {"K", "P", "F", "C"};
+        List<String> availableLevels = new ArrayList<>();
+        for (String lvl : allLevels) {
+            if (baseMapper.countByDifficulty(lvl) > 0) availableLevels.add(lvl);
+        }
+        if (availableLevels.isEmpty()) availableLevels.add("C");
+        int perLevel = Math.max(1, wordCount / availableLevels.size());
         
         Random rand = new Random();
-        for (String level : levels) {
+        for (String level : availableLevels) {
             List<VocWord> levelWords = baseMapper.getRandomWordsByLevel(level, perLevel);
             for (VocWord w : levelWords) {
                 Map<String, Object> item = new HashMap<>();
