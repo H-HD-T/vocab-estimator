@@ -241,17 +241,13 @@ public class ValidationServiceImpl implements ValidationService {
             return empty;
         }
 
-        // Update abs/rel error for all samples
+        // Update abs/rel error for all samples (keep original calibrated Di, only recompute errors)
         for (ValidationSample s : samples) {
-            // Reverse stored estimate to raw_our, then re-calibrate
-            int storedEst = s.getAlgorithmEstimate() != null ? s.getAlgorithmEstimate() : 0;
-            int rawEst = (int) Math.round((double) storedEst * OUR_MAX_VOCAB / 40000);
-            int calibratedAlg = calibrateEstimate(rawEst);
+            int di = s.getAlgorithmEstimate() != null ? s.getAlgorithmEstimate() : 0;
             int ci = s.getStandardEstimate() != null ? s.getStandardEstimate() : 0;
-            int diff = calibratedAlg - ci;
+            int diff = di - ci;
             int absErr = Math.abs(diff);
             double relErr = ci > 0 ? (double) absErr / ci : 0;
-            s.setAlgorithmEstimate(calibratedAlg);
             s.setDiff(diff);
             s.setAbsoluteError(absErr);
             s.setRelativeError(relErr);
