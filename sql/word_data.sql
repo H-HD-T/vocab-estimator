@@ -1,10 +1,11 @@
--- Word data import (auto-generated from word list files)
+-- Word data import
 USE vocab_estimator;
+SET NAMES utf8mb4;
 
 DELETE FROM voc_word;
 ALTER TABLE voc_word AUTO_INCREMENT = 1;
 
--- Junior high (P-初中) (1982 words)
+-- P-初中 (1982 words)
 INSERT INTO voc_word (word,difficulty,frequency,definition,cet_label) VALUES
 ('ability','P',0.50,'n. 能力，能耐；才能','NONE'),
 ('able','P',0.50,'adj. 能；[经管] 有能力的；能干的 n. (Able)人名；(伊朗)阿布勒；(英)埃布尔','NONE'),
@@ -1995,7 +1996,7 @@ INSERT INTO voc_word (word,difficulty,frequency,definition,cet_label) VALUES
 ('zigzag','P',0.50,'adj. “之”字形的 v.  弯弯曲曲行进 n. “之”字形；蜿蜒曲折','NONE'),
 ('zoo','P',0.50,'n. 动物园','NONE');
 
--- Senior high (F-高中) (1917 words)
+-- F-高中 (1917 words)
 INSERT INTO voc_word (word,difficulty,frequency,definition,cet_label) VALUES
 ('abandon','F',0.50,'n. 放任；狂热 v. 遗弃；放弃','CET4'),
 ('abnormal','F',0.50,'adj. 反常的，不规则的；变态的','CET4'),
@@ -3921,7 +3922,7 @@ INSERT INTO voc_word (word,difficulty,frequency,definition,cet_label) VALUES
 ('zone','F',0.50,'n. 地带；地区；联防 v. 分成区','CET4'),
 ('zoom','F',0.50,'n. 急速上升；嗡嗡声；[摄] 变焦摄影 v. 急速上升；摄像机移动','CET4');
 
--- College (C-大学四六级) (3634 words)
+-- C-大学四六级 (3634 words)
 INSERT INTO voc_word (word,difficulty,frequency,definition,cet_label) VALUES
 ('abandonment','C',0.50,'n. 放弃','CET6'),
 ('abbreviation','C',0.50,'n. 节略，缩写，缩短','CET6'),
@@ -7572,6 +7573,5 @@ INSERT INTO voc_word (word,difficulty,frequency,definition,cet_label) VALUES
 ('youngster','C',0.50,'n. 青年， 年轻人， 孩子','CET4'),
 ('zinc','C',0.50,'n. 锌 v. 在…上镀锌','CET6');
 
--- sample user
-INSERT INTO user_info (student_code, name_alias, cet4_score, cet6_score, student_type) VALUES
-('TEST_USER_001', 'TStudent', 480, 425, 'CORPUS_C');
+INSERT INTO user_info(student_code,name_alias,cet4_score,cet6_score,student_type) VALUES
+('TEST_USER_001','TStudent',480,425,'CORPUS_C');
