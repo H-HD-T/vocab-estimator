@@ -4,35 +4,31 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 /**
- * Algorithm 2: Hierarchical Level Calibration (????????)
+ * Algorithm 2: Hierarchical Level Calibration (cumulative model)
  *
  * Core logic:
- * 1. Use cumulative vocabulary at each level (hierarchical)
- * 2. Determine user tier based on highest level with >= 50% recognition
- * 3. Validate: for high tiers (F/C), lower levels with actual data must be >= 80%
- * 4. Estimate = lower_bound + known_ratio * (upper_bound - lower_bound)
+ * 1. Use cumulative vocabulary at each level (hierarchical, sums to ~40000)
+ * 2. Determine user tier based on highest level with >= 30% recognition
+ * 3. Validate: for high tiers (F/C), lower levels with data must be >= 80%
+ * 4. Estimate = lower_bound + known_ratio × (upper_bound - lower_bound)
  * 5. If validation fails, downgrade tier
+ * 6. Output Di naturally falls in 0-40000 range, no post-hoc calibration
  *
- * Cumulative vocab by level (?????????):
- *   K: 500  (mastered up to primary school)
- *   P: 2000 (mastered up to junior high)
- *   F: 4500 (mastered up to senior high/gaokao)
- *   C: 9000 (mastered up to college/CET-6)
- *
- * Cross-validation (??????):
- * - ?????????????? >= 80%
- * - ????????????????
- * - ??????????????????????
+ * Cumulative vocab by level:
+ *   K:  2,000  (mastered up to primary school)
+ *   P:  7,000  (mastered up to junior high)
+ *   F: 19,000  (mastered up to senior high/gaokao)
+ *   C: 40,000  (mastered up to college/CET-6)
  */
 @Component
 public class LevelCalibrationEstimator implements VocabEstimator {
 
     private static final Map<String, Integer> CUMULATIVE_VOCAB = new LinkedHashMap<>();
     static {
-        CUMULATIVE_VOCAB.put("K", 500);
-        CUMULATIVE_VOCAB.put("P", 2000);
-        CUMULATIVE_VOCAB.put("F", 4500);
-        CUMULATIVE_VOCAB.put("C", 9000);
+        CUMULATIVE_VOCAB.put("K", 2000);
+        CUMULATIVE_VOCAB.put("P", 7000);
+        CUMULATIVE_VOCAB.put("F", 19000);
+        CUMULATIVE_VOCAB.put("C", 40000);
     }
 
     @Override
@@ -41,7 +37,7 @@ public class LevelCalibrationEstimator implements VocabEstimator {
             return new AlgorithmResult(0, 0, 0, 0, 0, 0, 0);
         }
 
-        // Per-level stats
+        // Per-level results
         Map<String, List<Boolean>> levelResults = new HashMap<>();
         for (String level : CUMULATIVE_VOCAB.keySet()) {
             levelResults.put(level, new ArrayList<>());
@@ -59,13 +55,13 @@ public class LevelCalibrationEstimator implements VocabEstimator {
 
         int total = wordResults.size();
 
-        // Per-level recognition rates (only levels with actual data)
+        // Per-level recognition rates
         Map<String, Double> levelRates = new LinkedHashMap<>();
         Map<String, Boolean> levelHasData = new HashMap<>();
         for (String level : CUMULATIVE_VOCAB.keySet()) {
             List<Boolean> results = levelResults.get(level);
             if (results.isEmpty()) {
-                levelRates.put(level, 0.5); // default assumption for no data
+                levelRates.put(level, 0.5);
                 levelHasData.put(level, false);
             } else {
                 long knownCount = results.stream().filter(r -> r).count();
@@ -74,23 +70,16 @@ public class LevelCalibrationEstimator implements VocabEstimator {
             }
         }
 
-        // Find candidate tier: highest level with >= 50% recognition
-        // Only consider levels with actual data for the candidate decision
+        // Find candidate tier: highest level with >= 30% recognition
         String candidateLevel = "K";
         for (String level : CUMULATIVE_VOCAB.keySet()) {
-            double rate = levelRates.get(level);
-            // For empty levels, use the rate from the highest data level as proxy
-            if (!levelHasData.get(level)) {
-                // If no data at this level, assume performance matches best known level
-                // Don't change candidate based on empty levels
-                continue;
-            }
-            if (rate >= 0.3) {
+            if (!levelHasData.get(level)) continue;
+            if (levelRates.get(level) >= 0.3) {
                 candidateLevel = level;
             }
         }
 
-        // Determine if calibration is valid (confidence only, no estimate downgrade)
+        // Validation: for high tiers (F/C), lower levels must be >= 80%
         boolean validCalibration = true;
         if (candidateLevel.equals("C") || candidateLevel.equals("F")) {
             for (String level : CUMULATIVE_VOCAB.keySet()) {
@@ -115,20 +104,19 @@ public class LevelCalibrationEstimator implements VocabEstimator {
         }
         int upperBound = CUMULATIVE_VOCAB.get(candidateLevel);
 
-        // Estimate = lower_bound + rate * (upper_bound - lower_bound)
         int segmentSize = upperBound - lowerBound;
         int estimate = lowerBound + (int) Math.round(candidateRate * segmentSize);
-        estimate = Math.max(0, Math.min(estimate, 9000));
+        estimate = Math.max(0, Math.min(estimate, 40000));
 
-        // Range: wider for fewer samples, extreme ratios
+        // Range
         double rateSpread = Math.abs(candidateRate - 0.7);
         int rangeWidth = (int) (estimate * 0.25 * (1.0 + rateSpread * 2));
-        rangeWidth = Math.max(200, rangeWidth);
+        rangeWidth = Math.max(500, rangeWidth);
 
         int minRange = Math.max(0, estimate - rangeWidth / 2);
-        int maxRange = estimate + rangeWidth / 2;
+        int maxRange = Math.min(40000, estimate + rangeWidth / 2);
 
-        // Confidence: sample size + tier stability + pattern consistency
+        // Confidence
         double sampleConf = Math.min(1.0, total / 60.0);
         double tierConf = 1.0 - (levelOrder.indexOf(candidateLevel) / 4.0) * 0.3;
         double validConf = validCalibration ? 0.25 : 0.05;
@@ -141,6 +129,6 @@ public class LevelCalibrationEstimator implements VocabEstimator {
 
     @Override
     public String getAlgorithmName() {
-        return "Hierarchical Difficulty Calibration";
+        return "Hierarchical Calibration (0-40000)";
     }
 }

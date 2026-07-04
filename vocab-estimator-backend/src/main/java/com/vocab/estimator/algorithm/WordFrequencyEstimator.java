@@ -4,30 +4,30 @@ import org.springframework.stereotype.Component;
 import java.util.*;
 
 /**
- * Algorithm 1: Per-Level Cumulative Vocabulary Estimation
+ * Algorithm 1: Difficulty-Weighted Vocabulary Estimation
  *
  * Core logic:
- * 1. Divide vocabulary into K/P/F/C difficulty levels
- * 2. Each level has a vocabulary base for Chinese ESL learners
- * 3. Estimate = sum of (known_ratio * level_base) per level
+ * 1. Divide test words into K/P/F/C difficulty levels
+ * 2. Each level has a target vocabulary size summing to ~40000 (TVY-compatible)
+ * 3. Estimate = sum of (known_ratio_per_level × level_target)
  * 4. Consistency: higher-level ratio cannot exceed lower-level by 1.5x
- * 5. Confidence from sample size + distribution balance
+ * 5. Output Di naturally falls in 0-40000 range, no post-hoc calibration needed
  *
- * Level bases (additional words at each stage):
- *   K(primary): 500
- *   P(junior): 1500 (cumulative 2000)
- *   F(senior): 2500 (cumulative 4500, gaokao level)
- *   C(college): 4500 (cumulative 9000, CET-6 level)
+ * Level targets (additional words mastered at each stage):
+ *   K:  2,000  (primary school)
+ *   P:  5,000  (junior high, cumulative 7,000)
+ *   F: 12,000  (senior high, cumulative 19,000)
+ *   C: 21,000  (college/CET-6, cumulative 40,000)
  */
 @Component
 public class WordFrequencyEstimator implements VocabEstimator {
 
-    private static final Map<String, Integer> LEVEL_BASE_VOCAB = new LinkedHashMap<>();
+    private static final Map<String, Integer> LEVEL_TARGET = new LinkedHashMap<>();
     static {
-        LEVEL_BASE_VOCAB.put("K", 500);
-        LEVEL_BASE_VOCAB.put("P", 1500);
-        LEVEL_BASE_VOCAB.put("F", 2500);
-        LEVEL_BASE_VOCAB.put("C", 4500);
+        LEVEL_TARGET.put("K", 2000);
+        LEVEL_TARGET.put("P", 5000);
+        LEVEL_TARGET.put("F", 12000);
+        LEVEL_TARGET.put("C", 21000);
     }
 
     @Override
@@ -36,8 +36,9 @@ public class WordFrequencyEstimator implements VocabEstimator {
             return new AlgorithmResult(0, 0, 0, 0, 0, 0, 0);
         }
 
+        // Per-level stats: [knownCount, totalCount]
         Map<String, int[]> levelStats = new LinkedHashMap<>();
-        for (String level : LEVEL_BASE_VOCAB.keySet()) {
+        for (String level : LEVEL_TARGET.keySet()) {
             levelStats.put(level, new int[]{0, 0});
         }
 
@@ -45,7 +46,7 @@ public class WordFrequencyEstimator implements VocabEstimator {
         for (Map<String, Object> item : wordResults) {
             boolean isKnown = (Boolean) item.getOrDefault("known", false);
             String difficulty = (String) item.getOrDefault("difficulty", "K");
-            if (!LEVEL_BASE_VOCAB.containsKey(difficulty)) difficulty = "K";
+            if (!LEVEL_TARGET.containsKey(difficulty)) difficulty = "K";
 
             int[] stats = levelStats.get(difficulty);
             stats[1]++;
@@ -61,7 +62,7 @@ public class WordFrequencyEstimator implements VocabEstimator {
 
         // Compute per-level known ratios
         Map<String, Double> levelKnownRatio = new LinkedHashMap<>();
-        for (String level : LEVEL_BASE_VOCAB.keySet()) {
+        for (String level : LEVEL_TARGET.keySet()) {
             int[] stats = levelStats.get(level);
             levelKnownRatio.put(level, stats[1] > 0 ? (double) stats[0] / stats[1] : 0.5);
         }
@@ -71,23 +72,22 @@ public class WordFrequencyEstimator implements VocabEstimator {
         double[] constrained = new double[4];
         for (int i = 0; i < 4; i++) {
             constrained[i] = levelKnownRatio.get(levels[i]);
-            // Constraint 1: if lower level < 40%, cap higher level to 1.5x
+            // Constraint: if lower level < 40%, cap higher level to 1.5x
             for (int j = 0; j < i; j++) {
                 if (constrained[j] < 0.4 && constrained[i] > constrained[j] * 1.5) {
                     constrained[i] = constrained[j] * 1.5;
                 }
             }
-
         }
 
-        // Estimate = sigma(constrained_ratio * level_base)
+        // Estimate = sigma(constrained_ratio × level_target)
         int estimate = 0;
         for (int i = 0; i < 4; i++) {
-            estimate += Math.round(constrained[i] * LEVEL_BASE_VOCAB.get(levels[i]));
+            estimate += Math.round(constrained[i] * LEVEL_TARGET.get(levels[i]));
         }
-        estimate = Math.max(0, Math.min(estimate, 9000));
+        estimate = Math.max(0, Math.min(estimate, 40000));
 
-        // Range calculation
+        // ---- Range and confidence (same logic, scaled to 40000 range) ----
         double sampleFactor = Math.min(1.0, total / 40.0);
         double knownTotal = (double) known / total;
         double extremeFactor = 1.0 - Math.abs(knownTotal - 0.5) * 0.8;
@@ -101,10 +101,10 @@ public class WordFrequencyEstimator implements VocabEstimator {
         double distributionFactor = 1.0 + ratioStdDev * 0.5;
 
         int rangeWidth = (int) (estimate * 0.3 * (1.4 - sampleFactor * 0.5) * distributionFactor);
-        rangeWidth = Math.max(200, rangeWidth);
+        rangeWidth = Math.max(500, rangeWidth);
 
         int minRange = Math.max(0, estimate - rangeWidth / 2);
-        int maxRange = estimate + rangeWidth / 2;
+        int maxRange = Math.min(40000, estimate + rangeWidth / 2);
 
         // Confidence calculation
         double sampleConf = Math.min(1.0, total / 50.0);
@@ -121,6 +121,6 @@ public class WordFrequencyEstimator implements VocabEstimator {
 
     @Override
     public String getAlgorithmName() {
-        return "Word Frequency Weighted Estimation";
+        return "Difficulty-Weighted Estimation (0-40000)";
     }
 }

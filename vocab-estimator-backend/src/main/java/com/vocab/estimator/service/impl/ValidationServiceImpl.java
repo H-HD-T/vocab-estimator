@@ -39,33 +39,12 @@ public class ValidationServiceImpl implements ValidationService {
     private final Random random = new Random();
     private Map<String, VocWord> wordCache = new HashMap<>();
 
-    // Scale normalization: our algorithm produces raw estimate in 0-9000
-    // TVY produces Ci estimates in 0-40000 range
-    // We use a quadratic calibration fitted from 53 TVY samples:
-    //   Ci = 0.000331 * raw^2 + 1.1913 * raw
-    // avg_rel_err = 66.9% vs 74.4% for linear scaling
-    private static final int OUR_MAX_VOCAB = 9000;
-    private static final double CALIB_A = 0.000331;
-    private static final double CALIB_B = 1.1913;
-    private static final int CALIB_MAX = 40000;
 
 
     private String getChartDir() {
         String dir = System.getProperty("user.dir") + "/charts";
         new File(dir).mkdirs();
         return dir;
-    }
-
-    /**
-     * Calibration function: maps algorithm raw estimate (0-9000) to TVY-comparable scale (0-40000).
-     * Quadratic fitted from 53 TVY samples: Ci = 0.000331*raw^2 + 1.1913*raw
-     */
-    private int calibrateEstimate(int rawAlgorithmEstimate) {
-        double raw = Math.max(0, Math.min(OUR_MAX_VOCAB, rawAlgorithmEstimate));
-        double calibrated = CALIB_A * raw * raw + CALIB_B * raw;
-        if (calibrated > CALIB_MAX) calibrated = CALIB_MAX;
-        if (calibrated < 0) calibrated = 0;
-        return (int) Math.round(calibrated);
     }
 
     @Override
@@ -75,16 +54,16 @@ public class ValidationServiceImpl implements ValidationService {
         List<ValidationDTO.ValidationItem> items = new ArrayList<>();
         for (var item : report.getItems()) {
             // item.getAlgorithmEstimate() is our algorithm's raw estimate (0-9000 from AlgorithmValidator)
-            int rawAlg = item.getAlgorithmEstimate();
-            int scaledAlg = calibrateEstimate(rawAlg);
-            int diff = scaledAlg - item.getStandardEstimate();
+            int di = item.getAlgorithmEstimate();
+            int ci = item.getStandardEstimate();
+            int diff = di - ci;
             int absErr = Math.abs(diff);
-            double relErr = item.getStandardEstimate() > 0 ? (double) absErr / item.getStandardEstimate() : 0;
+            double relErr = ci > 0 ? (double) absErr / ci : 0;
             items.add(new ValidationDTO.ValidationItem(
                 item.getKnownWords(), item.getUnknownWords(),
-                item.getStandardEstimate(), scaledAlg,
-                rawAlg,
-                scaledAlg, diff, absErr, relErr));
+                ci, di,
+                di,
+                di, diff, absErr, relErr));
         }
         return buildDTO(items, report.getMeanError(), report.getMeanBias(), report.getCorrelation(), report.getSampleCount());
     }
@@ -161,13 +140,11 @@ public class ValidationServiceImpl implements ValidationService {
             int unknownWordsSize = resultNode.has("unknownWords") ? resultNode.get("unknownWords").size() : 0;
             System.out.println("[collectOne] Known: " + knownWordsSize + ", Unknown: " + unknownWordsSize + ", Ci=" + standardEstimate);
             AlgorithmResult algorithmResult = algorithmFactory.estimateAll(wordResults);
-            int rawAlgorithmEstimate = algorithmResult.getEstimate();
-            // Scale our algorithm estimate (0-9000) to TVY range (0-24000) for proper comparison
-            int calibratedEstimate = calibrateEstimate(rawAlgorithmEstimate);
-            int diff = calibratedEstimate - standardEstimate;
+            int di = algorithmResult.getEstimate();
+            int diff = di - standardEstimate;
             int absErr = Math.abs(diff);
             double relErr = standardEstimate > 0 ? (double) absErr / standardEstimate : 0;
-            System.out.println("[collectOne] RawDi=" + rawAlgorithmEstimate + " (0-9000), calibratedDi=" + calibratedEstimate + ", Ci=" + standardEstimate + ", diff=" + diff);
+            System.out.println("[collectOne] Di=" + di + ", Ci=" + standardEstimate + ", diff=" + diff);
             ValidationSample sample = new ValidationSample();
             java.util.List<String> knownStrList = new java.util.ArrayList<>();
             if (resultNode.has("knownWords")) for (var n : resultNode.get("knownWords")) knownStrList.add(n.isTextual() ? n.asText() : n.get("word").asText());
@@ -176,7 +153,7 @@ public class ValidationServiceImpl implements ValidationService {
             sample.setKnownWords(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(knownStrList));
             sample.setUnknownWords(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(unknownStrList));
             sample.setStandardEstimate(standardEstimate);
-            sample.setAlgorithmEstimate(calibratedEstimate);  // Our algorithm estimate scaled to TVY range for comparison
+            sample.setAlgorithmEstimate(di);  // Our algorithm estimate (0-40000 range)
             sample.setKnownCount(knownStrList.size());
             sample.setUnknownCount(unknownStrList.size());
             sample.setDiff(diff);
@@ -241,7 +218,7 @@ public class ValidationServiceImpl implements ValidationService {
             return empty;
         }
 
-        // Update abs/rel error for all samples (keep original calibrated Di, only recompute errors)
+        // Update abs/rel error for all samples (keep original Di, only recompute errors)
         for (ValidationSample s : samples) {
             int di = s.getAlgorithmEstimate() != null ? s.getAlgorithmEstimate() : 0;
             int ci = s.getStandardEstimate() != null ? s.getStandardEstimate() : 0;
@@ -531,8 +508,8 @@ public class ValidationServiceImpl implements ValidationService {
         dto.setMeanBias(meanBias);
         dto.setCorrelation(correlation);
         dto.setSampleCount(n);
-        dto.setOurMaxVocab(OUR_MAX_VOCAB);
-        dto.setTvyMaxVocab(CALIB_MAX);
+        dto.setOurMaxVocab(40000);
+        dto.setTvyMaxVocab(40000);
         dto.setScaleFactor(1.0);
         return dto;
     }
