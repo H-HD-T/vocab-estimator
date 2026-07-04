@@ -76,12 +76,13 @@ public class LevelCalibrationEstimator implements VocabEstimator {
         }
 
         // Find candidate tier: highest level with >= 20% recognition
-        // Lowered from 30% to 20% to include users with modest word recognition
+        // Progressive thresholds: K>=0.1, P>=0.2, F>=0.35, C>=0.5
         String candidateLevel = "K";
         for (String level : CUMULATIVE_VOCAB.keySet()) {
             // Only use actual data levels for candidate decision, not proxy-filled ones
             if (!levelHasData.get(level)) continue;
-            if (levelRates.get(level) >= 0.2) {
+            double levelThreshold = level.equals("K") ? 0.1 : (level.equals("P") ? 0.2 : (level.equals("F") ? 0.35 : 0.5));
+            if (levelRates.get(level) >= levelThreshold) {
                 candidateLevel = level;
             }
         }
