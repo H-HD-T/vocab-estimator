@@ -12,5 +12,6 @@ public interface ValidationService {
     List<ValidationSample> getHistory();
     ValidationDTO getStats();
     ValidationDTO recalculateAllStats();
+    Map<String, String> lookupDifficulties(List<String> words);
     void clearAll();
 }

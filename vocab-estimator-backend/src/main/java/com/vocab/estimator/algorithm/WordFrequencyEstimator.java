@@ -1,121 +1,121 @@
 package com.vocab.estimator.algorithm;
 
 import org.springframework.stereotype.Component;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
- * Algorithm 1: Word Frequency Weighted Estimation
- * 
+ * Algorithm 1: Per-Level Cumulative Vocabulary Estimation
+ *
  * Core logic:
- * 1. Map known/unknown ratio to an estimated vocabulary base
- * 2. Weight each word by its frequency: low-freq known words contribute more
- * 3. Use frequency distribution to compute confidence interval
- * 4. Confidence is derived from sample size and frequency distribution balance
- * 
- * Reference vocabulary sizes by level:
- *   K (Primary): ~500 words
- *   P (Junior): ~2000 words
- *   F (Senior): ~4500 words  
- *   C (College+): ~8000 words
- *   Total estimated: ~15000+ words
+ * 1. Divide vocabulary into K/P/F/C difficulty levels
+ * 2. Each level has a vocabulary base for Chinese ESL learners
+ * 3. Estimate = sum of (known_ratio * level_base) per level
+ * 4. Consistency: higher-level ratio cannot exceed lower-level by 1.5x
+ * 5. Confidence from sample size + distribution balance
+ *
+ * Level bases (additional words at each stage):
+ *   K(primary): 500
+ *   P(junior): 1500 (cumulative 2000)
+ *   F(senior): 2500 (cumulative 4500, gaokao level)
+ *   C(college): 4500 (cumulative 9000, CET-6 level)
  */
 @Component
 public class WordFrequencyEstimator implements VocabEstimator {
 
-    // Base vocabulary sizes per difficulty level
-    private static final Map<String, Integer> LEVEL_BASE_VOCAB = new HashMap<>();
+    private static final Map<String, Integer> LEVEL_BASE_VOCAB = new LinkedHashMap<>();
     static {
-        LEVEL_BASE_VOCAB.put("K", 600);
-        LEVEL_BASE_VOCAB.put("P", 2000);
-        LEVEL_BASE_VOCAB.put("F", 4000);
-        LEVEL_BASE_VOCAB.put("C", 6000);
+        LEVEL_BASE_VOCAB.put("K", 500);
+        LEVEL_BASE_VOCAB.put("P", 1500);
+        LEVEL_BASE_VOCAB.put("F", 2500);
+        LEVEL_BASE_VOCAB.put("C", 4500);
     }
-
-    private static final int TOTAL_REFERENCE_VOCAB = 20000;
 
     @Override
     public AlgorithmResult estimate(List<Map<String, Object>> wordResults) {
         if (wordResults == null || wordResults.isEmpty()) {
             return new AlgorithmResult(0, 0, 0, 0, 0, 0, 0);
         }
-        
-        int known = 0;
-        int unknown = 0;
-        double weightedScore = 0;
-        double totalWeight = 0;
-        
-        // Track per-level stats for calibration
-        Map<String, Integer> levelKnown = new HashMap<>();
-        Map<String, Integer> levelTotal = new HashMap<>();
-        
+
+        Map<String, int[]> levelStats = new LinkedHashMap<>();
+        for (String level : LEVEL_BASE_VOCAB.keySet()) {
+            levelStats.put(level, new int[]{0, 0});
+        }
+
+        int known = 0, unknown = 0;
         for (Map<String, Object> item : wordResults) {
             boolean isKnown = (Boolean) item.getOrDefault("known", false);
             String difficulty = (String) item.getOrDefault("difficulty", "K");
-            Double frequency = (Double) item.getOrDefault("frequency", 0.5);
-            
-            // Track per-level
-            levelTotal.merge(difficulty, 1, Integer::sum);
+            if (!LEVEL_BASE_VOCAB.containsKey(difficulty)) difficulty = "K";
+
+            int[] stats = levelStats.get(difficulty);
+            stats[1]++;
             if (isKnown) {
+                stats[0]++;
                 known++;
-                levelKnown.merge(difficulty, 1, Integer::sum);
             } else {
                 unknown++;
             }
-            
-            // Weight: lower frequency words that are known contribute more
-            // High-frequency known words contribute less (too easy)
-            double wordWeight = isKnown ? (1.0 - frequency + 0.1) : -(frequency + 0.1);
-            weightedScore += wordWeight;
-            totalWeight += (isKnown ? (1.0 - frequency + 0.1) : (frequency + 0.1));
         }
-        
+
         int total = wordResults.size();
-        double knownRatio = total > 0 ? (double) known / total : 0;
-        
-        // ---- Core estimation logic ----
-        // 1. Base estimate from known ratio alone
-        double baseEstimate = knownRatio * TOTAL_REFERENCE_VOCAB;
-        
-        // 2. Frequency-weighted adjustment
-        // If user knows low-frequency words, estimated vocab increases
-        double freqAdjustment = totalWeight > 0 ? (weightedScore / totalWeight) * 2000 : 0;
-        
-        // 3. Level-based adjustment
-        double levelAdjustment = 0;
+
+        // Compute per-level known ratios
+        Map<String, Double> levelKnownRatio = new LinkedHashMap<>();
         for (String level : LEVEL_BASE_VOCAB.keySet()) {
-            int lt = levelTotal.getOrDefault(level, 0);
-            int lk = levelKnown.getOrDefault(level, 0);
-            if (lt > 0) {
-                double lr = (double) lk / lt;
-                int baseVocab = LEVEL_BASE_VOCAB.get(level);
-                // Known ratio at higher levels contributes more
-                int levelMultiplier = level.equals("C") ? 4 : level.equals("F") ? 3 : level.equals("P") ? 2 : 1;
-                levelAdjustment += lr * baseVocab * levelMultiplier * 0.3;
-            }
+            int[] stats = levelStats.get(level);
+            levelKnownRatio.put(level, stats[1] > 0 ? (double) stats[0] / stats[1] : 0.5);
         }
-        
-        int estimate = (int) Math.round(baseEstimate + freqAdjustment + levelAdjustment);
-        estimate = Math.max(0, Math.min(estimate, TOTAL_REFERENCE_VOCAB * 2));
-        
-        // ---- Range calculation ----
-        // Range widens with fewer samples or extreme ratios
-        double sampleFactor = Math.min(1.0, total / 50.0);
-        double ratioSpread = 1.0 - Math.abs(knownRatio - 0.5) * 2;  // max at 50/50 split
-        int rangeWidth = (int) ((1.0 - sampleFactor * 0.5) * 3000 + (1.0 - ratioSpread) * 2000);
-        
+
+        // Consistency constraint: higher level ratio capped by lower level
+        String[] levels = {"K", "P", "F", "C"};
+        double[] constrained = new double[4];
+        for (int i = 0; i < 4; i++) {
+            constrained[i] = levelKnownRatio.get(levels[i]);
+            // Constraint 1: if lower level < 40%, cap higher level to 1.5x
+            for (int j = 0; j < i; j++) {
+                if (constrained[j] < 0.4 && constrained[i] > constrained[j] * 1.5) {
+                    constrained[i] = constrained[j] * 1.5;
+                }
+            }
+
+        }
+
+        // Estimate = sigma(constrained_ratio * level_base)
+        int estimate = 0;
+        for (int i = 0; i < 4; i++) {
+            estimate += Math.round(constrained[i] * LEVEL_BASE_VOCAB.get(levels[i]));
+        }
+        estimate = Math.max(0, Math.min(estimate, 9000));
+
+        // Range calculation
+        double sampleFactor = Math.min(1.0, total / 40.0);
+        double knownTotal = (double) known / total;
+        double extremeFactor = 1.0 - Math.abs(knownTotal - 0.5) * 0.8;
+
+        double ratioStdDev = 0;
+        double meanRatio = Arrays.stream(constrained).average().orElse(0.5);
+        for (double r : constrained) {
+            ratioStdDev += Math.pow(r - meanRatio, 2);
+        }
+        ratioStdDev = Math.sqrt(ratioStdDev / 4);
+        double distributionFactor = 1.0 + ratioStdDev * 0.5;
+
+        int rangeWidth = (int) (estimate * 0.3 * (1.4 - sampleFactor * 0.5) * distributionFactor);
+        rangeWidth = Math.max(200, rangeWidth);
+
         int minRange = Math.max(0, estimate - rangeWidth / 2);
         int maxRange = estimate + rangeWidth / 2;
-        
-        // ---- Confidence calculation ----
-        // Confidence increases with sample size and decreases with extreme ratios
-        double sampleConf = Math.min(1.0, total / 100.0);  // more samples = higher confidence
-        double balanceConf = 1.0 - Math.abs(knownRatio - 0.5) * 1.5;  // 50/50 gives best confidence
-        balanceConf = Math.max(0.1, balanceConf);
-        double confidence = (sampleConf * 0.6 + balanceConf * 0.4) * 100;
-        confidence = Math.min(100, Math.max(0, confidence));
-        
+
+        // Confidence calculation
+        double sampleConf = Math.min(1.0, total / 50.0);
+        double balanceConf = 1.0 - Math.abs(knownTotal - 0.5) * 1.2;
+        balanceConf = Math.max(0.2, Math.min(1.0, balanceConf));
+        double consistencyConf = 1.0 - ratioStdDev * 0.5;
+        consistencyConf = Math.max(0.3, Math.min(1.0, consistencyConf));
+
+        double confidence = (sampleConf * 0.35 + balanceConf * 0.35 + consistencyConf * 0.3) * 100;
+        confidence = Math.max(5, Math.min(100, confidence));
+
         return new AlgorithmResult(estimate, minRange, maxRange, confidence, known, unknown, total);
     }
 

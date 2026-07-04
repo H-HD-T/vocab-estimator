@@ -10,6 +10,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/validation")
@@ -41,6 +42,17 @@ public class ValidationController {
         }
     }
 
+    
+    @PostMapping("/lookup-words")
+    public Result<Map<String, String>> lookupWords(@RequestBody List<String> words) {
+        try {
+            return Result.success(validationService.lookupDifficulties(words));
+        } catch (Exception e) {
+            return Result.error("Lookup failed: " + e.getMessage());
+        }
+    }
+
+    
     @PostMapping("/collect-one")
     public Result<?> collectOne() {
         try {

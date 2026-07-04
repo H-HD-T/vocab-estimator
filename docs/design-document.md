@@ -105,50 +105,67 @@ public class AlgorithmResult {
 
 **设计思路：**
 
-基于“英语常用词共计约 35,000 词”这个参考值，通过以下四步推算：
+将词汇按难度分为 K(小学)、P(初中)、F(高中)、C(大学) 四个等级，每个等级对应中国英语学习者在该阶段的基础词汇量。核心公式：总词汇量 = Σ(各等级认识比例 × 该等级词汇基数)
 
-1. **基础估算**：认识词比例 x 参考词汇量
-2. **词频调整**：认识低频词的权重更高，推导更大的词汇量
-3. **层级调整**：高难度词汇的认识率赋予更高权重
-4. **确信度**：基于样本量大小和正负比例平衡度计算
+**词汇基数设计（针对中国英语学习者）：**
 
-**核心代码逻辑：**
+| 等级 | 词汇基数 | 累计 | 教育阶段 |
+|------|---------|------|---------|
+| K(小学) | 500 | 500 | 小学英语 |
+| P(初中) | 1500 | 2000 | 初中英语 |
+| F(高中) | 2500 | 4500 | 高中英语(高考约3500词) |
+| C(大学) | 4500 | 9000 | 大学四六级 |
 
-```java
-// Step 1: 基础估算
-int total = wordResults.size();
-double knownRatio = (double) known / total;
-double baseEstimate = knownRatio * TOTAL_REFERENCE_VOCAB; // 35000
+**核心逻辑：**
+1. 统计各级认识/不认识数量，无数据等级默认50%
+2. 一致性约束：低等级低于40%则高等级不能超过其1.5倍
+3. 估算 = Σ(约束后认识率×该级词汇基数)，封顶9000
+4. 范围与确信度由样本量、认识率平衡度、跨级一致性共同决定
 
-// Step 2: 词频加权调整
-double wordWeight = isKnown ? (1.0 - frequency + 0.1) : -(frequency + 0.1);
-// 低频词被认识: 权重高
-// 低频词被认识的词: weight = 0.91 ~ 1.1
-// 高频词被认识的词: weight = 0.2 ~ 0.5
+**计算示例：** 用户 K(100%), P(100%), F(60%), C(0%)
+`
+估算 = 500×1.0 + 1500×1.0 + 2500×0.6 + 4500×0.0 = 3500
+`
+说明：高中水平，未达大学四级，3500词合理。
 
-double freqAdjustment = (weightedScore / totalWeight) * 2000;
+**版本变更：** v2.0 重构为 per-level 累加，消除旧版双重计数导致的虚高。
 
-// Step 3: 层级调整 (K=1000, P=3000, F=6000, C=10000)
-for (String level : LEVEL_BASE_VOCAB.keySet()) {
-    double lr = (double) levelKnown.get(level) / levelTotal.get(level);
-    int baseVocab = LEVEL_BASE_VOCAB.get(level);
-    int levelMultiplier = level.equals("C") ? 4 : level.equals("F") ? 3 : ...;
-    levelAdjustment += lr * baseVocab * levelMultiplier * 0.3;
-}
-
-int estimate = (int)(baseEstimate + freqAdjustment + levelAdjustment);
-```
+---
 
 ### 2.4 算法 2: 分层难度校准 (LevelCalibrationEstimator)
 
 **设计思路：**
 
-词汇知识是阶梯式的——C级用户应该掌握所有 K/P/F 词，但 K级用户不一定认识 C级词。通过以下步骤估计：
+采用阶梯式累计估算：用户的词汇水平由最高稳定掌握的级别决定。找到用户认识率不低于30%的最高等级，在该等级区间内插值。
 
-1. **计算各级别认识率**
-2. **确定候选级别**：最高认识率≥60%的级别
-3. **校验规则**：C/F级用户的低级别认识率≥90%，否则降级
-4. **映射词汇量**：平均掌握度 x 最大词汇量 (45000)
+**关键变化（v2.1）：**
+- 候选门槛从60%降至30%：避免用户因F级认识率49%就降级到P级，损失2500词汇量
+- 移除了严格降级逻辑：高等级用户低级别认识率不足80%时不再降级，仅降低确信度
+- 无数据等级跳过候选判断和校验
+
+**累计词汇量：K=500, P=2000, F=4500, C=9000**
+
+**核心逻辑：**
+1. 统计各级认识率(无数据等级跳过候选逻辑)
+2. 找最高认识率不低于30%的等级作为候选
+3. 估算 = 上一级累计值 + 候选级认识率×(本级累计-上一级累计)
+4. 校验仅用于确信度，不降级估算值
+
+**关键区别 vs 算法1：** 使用累计词汇量(含下级)而非独立基数，适合阶梯式掌握的学习模型。两算法平均可平滑偏差。
+
+---
+
+### 2.5 算法工厂 (AlgorithmFactory)
+
+同时调用两个算法取平均值：估算取均值、范围取最小-最大、确信度取均值。多算法组合可避免单一算法偏差，提高估算稳定性。
+
+---
+
+### 2.6 稳定性测试（批处理采样验证）
+
+**设计思路：** 从标准词汇库中按9种组合(认识比例10%/20%/30%×采样长度200/300/400)各采100次，共900次测试，统计期望和方差。
+
+---
 
 ### 2.5 算法工厂 (AlgorithmFactory)
 
@@ -332,34 +349,35 @@ const estimate = await page.evaluate(() => { /* 提取页面上的 Ci 值 */ });
 
 ### 6.3 后端处理 (ValidationServiceImpl)
 
-```java
-public ValidationSample collectOne() {
-    // 1. 启动新窗口执行 scraper
-    ProcessBuilder pb = new ProcessBuilder("cmd", "/c", "start", "node", "backend-scrape.js");
-    
-    // 2. 等待结果文件 (vocab_single.json)
-    while (!resultFile.exists()) { Thread.sleep(3000); }
-    
-    // 3. 解析结果 (knownWords, unknownWords, standardEstimate=Ci)
-    // 4. 调用本地算法计算 Di
-    AlgorithmResult ar = algorithmFactory.estimateAll(wordResults);
-    
-    // 5. 保存到数据库
-    // 6. 重新计算全局统计
-}
-```
+**采集与对比流程：**
+1. 启动Chrome窗口执行Playwright爬虫(backend-scrape.js)
+2. 轮询等待结果文件vocab_single.json(最长120秒)
+3. 解析结果：knownWords, unknownWords, standardEstimate(Ci)
+4. 调用算法工厂计算原始Di(0-9000量表)
+5. 计算TVY同源比例估算值用于对比：proportionEst = 认识比例×40000
+6. 保存原始Di和比例估算Di到数据库
+
+**量表归一化：**
+- TVY：0-40000，英语母语者通用量表
+- 我们的算法(rawDi)：0-9000，中国英语学习者量表
+- TVY比例估算(proportionEst)：0-40000，与TVY同源用于验证对比
+
+**三种数值的意义：**
+- rawAlgorithmEstimate：你真实的词汇量估计(中国学习者，0-9000)
+- algorithmEstimate(界面Di)：比例估算值 = 认识比例×40000
+- standardEstimate(Ci)：TVY网站的估算值
 
 ### 6.4 误差统计指标
 
-```java
-MAE  = avg(|Di - Ci|)       // 平均绝对误差
-MSE  = avg((Di - Ci)^2)     // 均方误差
-RMSE = sqrt(MSE)            // 均方根误差
-相关系数 = cov(Ci, Di) / (std(Ci) * std(Di)) // Pearson
-误差分布: |error|<=500 / <=1000 / <=2000 / >2000
-```
+基于比例估算值计算，确保与TVY同量表可比：
+- DIFF = proportionEst - Ci(每行差值)
+- MAE = avg(|DIFF|)(平均绝对误差)
+- MSE = avg(DIFF平方)(均方误差)
+- RMSE = sqrt(MSE)(均方根误差)
+- 相关系数 = Pearson(基于比例估算值与Ci)
+- 误差分布：error <= 500 / <= 1000 / <= 2000 / > 2000
 
-后端同时生成 Ci-Di 散点图和误差分布直方图为 PNG 图片（使用 Java AWT 绘制）。
+相关系数衡量趋势一致性，不受量表影响。
 
 ---
 

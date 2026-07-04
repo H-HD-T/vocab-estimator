@@ -1,7 +1,6 @@
 package com.vocab.estimator.dto;
 
 import java.util.List;
-import java.util.Map;
 
 public class ValidationDTO {
     private List<ValidationItem> items;
@@ -16,11 +15,13 @@ public class ValidationDTO {
     private Double maxError;
     private Double minError;
     private Double meanRelativeError;
+    
+    // Scale normalization info
+    private Integer ourMaxVocab;
+    private Integer tvyMaxVocab;
+    private Double scaleFactor;
 
-    // Error distribution
     private ErrorDistribution errorDistribution;
-
-    // Chart data
     private List<ChartPoint> scatterData;
     private List<DistributionBin> histogramData;
     private String scatterChartUrl;
@@ -53,6 +54,12 @@ public class ValidationDTO {
     public void setMinError(Double minError) { this.minError = minError; }
     public Double getMeanRelativeError() { return meanRelativeError; }
     public void setMeanRelativeError(Double meanRelativeError) { this.meanRelativeError = meanRelativeError; }
+    public Integer getOurMaxVocab() { return ourMaxVocab; }
+    public void setOurMaxVocab(Integer ourMaxVocab) { this.ourMaxVocab = ourMaxVocab; }
+    public Integer getTvyMaxVocab() { return tvyMaxVocab; }
+    public void setTvyMaxVocab(Integer tvyMaxVocab) { this.tvyMaxVocab = tvyMaxVocab; }
+    public Double getScaleFactor() { return scaleFactor; }
+    public void setScaleFactor(Double scaleFactor) { this.scaleFactor = scaleFactor; }
     public ErrorDistribution getErrorDistribution() { return errorDistribution; }
     public void setErrorDistribution(ErrorDistribution errorDistribution) { this.errorDistribution = errorDistribution; }
     public List<ChartPoint> getScatterData() { return scatterData; }
@@ -67,21 +74,30 @@ public class ValidationDTO {
     public static class ValidationItem {
         private List<String> knownWords;
         private List<String> unknownWords;
-        private Integer standardEstimate;
-        private Integer algorithmEstimate;
+        private Integer standardEstimate;    // Ci from TVY
+        private Integer algorithmEstimate;  // Di proportion-based (for comparison with TVY)
+        private Integer rawAlgorithmEstimate; // Di from our actual algorithm
+        private Integer normalizedEstimate; // Scaled to TVY range
         private Integer diff;
         private Integer absoluteError;
         private Double relativeError;
 
         public ValidationItem() {}
         public ValidationItem(List<String> knownWords, List<String> unknownWords,
-                            Integer standardEstimate, Integer algorithmEstimate, Integer diff,
+                            Integer standardEstimate, Integer algorithmEstimate,
+                            Integer rawAlgorithmEstimate,
+                            Integer normalizedEstimate, Integer diff,
                             Integer absoluteError, Double relativeError) {
             this.knownWords = knownWords; this.unknownWords = unknownWords;
             this.standardEstimate = standardEstimate; this.algorithmEstimate = algorithmEstimate;
+            this.rawAlgorithmEstimate = rawAlgorithmEstimate;
+            this.normalizedEstimate = normalizedEstimate;
             this.diff = diff; this.absoluteError = absoluteError;
             this.relativeError = relativeError;
         }
+        
+        public Integer getRawAlgorithmEstimate() { return rawAlgorithmEstimate; }
+        public void setRawAlgorithmEstimate(Integer rawAlgorithmEstimate) { this.rawAlgorithmEstimate = rawAlgorithmEstimate; }
 
         public List<String> getKnownWords() { return knownWords; }
         public void setKnownWords(List<String> knownWords) { this.knownWords = knownWords; }
@@ -91,6 +107,8 @@ public class ValidationDTO {
         public void setStandardEstimate(Integer standardEstimate) { this.standardEstimate = standardEstimate; }
         public Integer getAlgorithmEstimate() { return algorithmEstimate; }
         public void setAlgorithmEstimate(Integer algorithmEstimate) { this.algorithmEstimate = algorithmEstimate; }
+        public Integer getNormalizedEstimate() { return normalizedEstimate; }
+        public void setNormalizedEstimate(Integer normalizedEstimate) { this.normalizedEstimate = normalizedEstimate; }
         public Integer getDiff() { return diff; }
         public void setDiff(Integer diff) { this.diff = diff; }
         public Integer getAbsoluteError() { return absoluteError; }
@@ -123,7 +141,6 @@ public class ValidationDTO {
     public static class ChartPoint {
         private double x;
         private double y;
-
         public ChartPoint() {}
         public ChartPoint(double x, double y) { this.x = x; this.y = y; }
         public double getX() { return x; }
@@ -136,7 +153,6 @@ public class ValidationDTO {
         private double min;
         private double max;
         private int count;
-
         public DistributionBin() {}
         public DistributionBin(double min, double max, int count) { this.min = min; this.max = max; this.count = count; }
         public double getMin() { return min; }
