@@ -116,30 +116,76 @@ public class ValidationServiceImpl implements ValidationService {
             List<Map<String, Object>> wordResults = new ArrayList<>();
             int standardEstimate = resultNode.has("standardEstimate") ? resultNode.get("standardEstimate").asInt() : 0;
             // Read word+difficulty directly from scraper output (no guessDifficulty)
-            if (resultNode.has("knownWords")) {
-                for (var n : resultNode.get("knownWords")) {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("word", n.isTextual() ? n.asText() : n.get("word").asText());
-                    item.put("known", true);
-                    item.put("difficulty", n.isTextual() ? "C" : (n.has("difficulty") ? n.get("difficulty").asText() : "C"));
-                    item.put("frequency", 0.5);
-                    wordResults.add(item);
+                // Step 1: Collect all word strings from scraper JSON
+                List<String> allScrapedWords = new ArrayList<>();
+                if (resultNode.has("knownWords")) {
+                    for (var n : resultNode.get("knownWords")) {
+                        allScrapedWords.add(n.isTextual() ? n.asText() : n.get("word").asText());
+                    }
                 }
-            }
-            if (resultNode.has("unknownWords")) {
-                for (var n : resultNode.get("unknownWords")) {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("word", n.isTextual() ? n.asText() : n.get("word").asText());
-                    item.put("known", false);
-                    item.put("difficulty", n.isTextual() ? "C" : (n.has("difficulty") ? n.get("difficulty").asText() : "C"));
-                    item.put("frequency", 0.5);
-                    wordResults.add(item);
+                if (resultNode.has("unknownWords")) {
+                    for (var n : resultNode.get("unknownWords")) {
+                        allScrapedWords.add(n.isTextual() ? n.asText() : n.get("word").asText());
+                    }
                 }
-            }
+                // Step 2: Look up actual difficulties from database
+                Map<String, String> difficultyMap = lookupDifficulties(allScrapedWords);
+                // Step 3: Build word items with correct difficulty from DB lookup
+                if (resultNode.has("knownWords")) {
+                    for (var n : resultNode.get("knownWords")) {
+                        Map<String, Object> item = new HashMap<>();
+                        String w = n.isTextual() ? n.asText() : n.get("word").asText();
+                        item.put("word", w);
+                        item.put("known", true);
+                        String diff = difficultyMap.getOrDefault(w, "K");
+                        // Skip words not in our database (UNKNOWN difficulty) to avoid polluting stats
+                        if ("UNKNOWN".equals(diff)) continue;
+                        item.put("difficulty", diff);
+                        item.put("frequency", 0.5);
+                        wordResults.add(item);
+                    }
+                }
+                if (resultNode.has("unknownWords")) {
+                    for (var n : resultNode.get("unknownWords")) {
+                        Map<String, Object> item = new HashMap<>();
+                        String w = n.isTextual() ? n.asText() : n.get("word").asText();
+                        item.put("word", w);
+                        item.put("known", false);
+                        String diff = difficultyMap.getOrDefault(w, "K");
+                        // Skip words not in our database (UNKNOWN difficulty) to avoid polluting stats
+                        if ("UNKNOWN".equals(diff)) continue;
+                        item.put("difficulty", diff);
+                        item.put("frequency", 0.5);
+                        wordResults.add(item);
+                    }
+                }
             int knownWordsSize = resultNode.has("knownWords") ? resultNode.get("knownWords").size() : 0;
             int unknownWordsSize = resultNode.has("unknownWords") ? resultNode.get("unknownWords").size() : 0;
             System.out.println("[collectOne] Known: " + knownWordsSize + ", Unknown: " + unknownWordsSize + ", Ci=" + standardEstimate);
-            AlgorithmResult algorithmResult = algorithmFactory.estimateAll(wordResults);
+            AlgorithmResult algorithmResult = algorithmFactory.estimateAll(wordResults);            // Debug: print difficulty distribution
+            {
+                Map<String,int[]> ds = new LinkedHashMap<>();
+                ds.put("K",new int[]{0,0}); ds.put("P",new int[]{0,0});
+                ds.put("F",new int[]{0,0}); ds.put("C",new int[]{0,0});
+                for (Map<String,Object> wi : wordResults) {
+                    String d = (String)wi.getOrDefault("difficulty","K");
+                    if (!ds.containsKey(d)) d = "K";
+                    boolean ik = (Boolean)wi.getOrDefault("known",false);
+                    ds.get(d)[1]++; if (ik) ds.get(d)[0]++;
+                }
+                StringBuilder log = new StringBuilder("[collectOne] Difficulty breakdown:\n");
+                for (String d : new String[]{"K","P","F","C"}) {
+                    int[] s = ds.get(d);
+                    log.append("  ").append(d).append(": ").append(s[0]).append("/").append(s[1])
+                       .append(" (").append(s[1]>0?s[0]*100/s[1]:0).append("%)\n");
+                }
+                int kc = algorithmResult.getKnownCount();
+                int tc = algorithmResult.getKnownCount() + algorithmResult.getUnknownCount();
+                log.append("  Total: ").append(kc).append("/").append(tc).append(" known\n");
+                log.append("  Di=").append(algorithmResult.getEstimate());
+                System.out.println(log.toString());
+            }
+
             int di = algorithmResult.getEstimate();
             int diff = di - standardEstimate;
             int absErr = Math.abs(diff);
@@ -534,3 +580,4 @@ public class ValidationServiceImpl implements ValidationService {
         }
     }
 }
+

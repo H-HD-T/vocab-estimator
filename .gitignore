@@ -1,12 +1,15 @@
-# === Java / Maven ===
+﻿# === Java / Maven ===
 target/
 *.jar
 *.war
 *.class
+*.log
+hs_err_pid*.log
 
 # === Vue / Node ===
 node_modules/
 dist/
+.vite/
 
 # === IDE ===
 .idea/
@@ -14,6 +17,7 @@ dist/
 .vscode/
 *.swp
 *.swo
+.agents/
 
 # === OS ===
 .DS_Store
@@ -22,29 +26,25 @@ Thumbs.db
 # === Environment ===
 .env
 *.local
+application-local.properties
 
-# === Logs ===
-*.log
-
-# === Python ===
+# === Python temp scripts ===
+*.py
 *.pyc
-__pycache__/
-*.pyo
 
-# === Generated / Temp ===
+# === Debug / Temp files ===
+vocab_single.json
+vocab_debug.json
+backend-scrape-old*.js
+*.bat
+temp*.json
+t.json
+result_page.png
+
+# === Test data (raw txt) ===
+test-data/*.txt
+
+# === Generated ===
 charts/
 vocab_single.json
-test_batch.json
-_batch_validate.py
-update_*.py
-build_word_db*.py
-decoder.py
-imp_words.py
-update_validation.py
-word_data.json
-git_push.bat
-backend-scrape.log
-frontend-scrape.log
-
-# === SSH ===
-id_ed25519*
+vocab_debug.json
